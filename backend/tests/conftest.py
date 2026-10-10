@@ -18,6 +18,12 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
+def paths(settings: Settings) -> DataPaths:
+    settings.paths.ensure()
+    return settings.paths
+
+
+@pytest.fixture
 def engine(settings: Settings):
     settings.paths.ensure()
     eng = make_engine(settings.paths.db_file)

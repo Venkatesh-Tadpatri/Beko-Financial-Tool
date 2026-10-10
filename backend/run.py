@@ -14,9 +14,13 @@ import uvicorn
 
 
 def main() -> None:
+    from app.core.config import Settings
+    from app.core.logging_setup import configure as configure_logging
     from app.main import create_app
 
-    app = create_app()
+    settings = Settings.from_env()
+    configure_logging(settings.paths.logs_dir)
+    app = create_app(settings)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", app.state.fvt.settings.port))
     sock.listen(64)

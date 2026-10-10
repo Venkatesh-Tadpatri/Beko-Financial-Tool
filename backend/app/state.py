@@ -25,3 +25,10 @@ class AppState:
     engine: Engine | None = None
     session_factory: sessionmaker[Session] | None = None
     problems: list[str] = field(default_factory=list)
+    recovery_code: str | None = None  # integrity_failed | migration_failed | newer_database
+
+    def close_database(self) -> None:
+        if self.engine is not None:
+            self.engine.dispose()
+        self.engine = None
+        self.session_factory = None

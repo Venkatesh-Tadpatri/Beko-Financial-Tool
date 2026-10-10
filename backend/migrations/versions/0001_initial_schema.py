@@ -30,23 +30,6 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id', name=op.f('pk_approval_levels')),
     sa.UniqueConstraint('dataset_type', 'level_no', name=op.f('uq_approval_levels_dataset_type'))
     )
-    op.create_table('backups',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('filename', sa.String(length=255), nullable=False),
-    sa.Column('directory', sa.String(length=500), nullable=False),
-    sa.Column('reason', sa.String(length=16), nullable=False),
-    sa.Column('created_at', sa.String(length=32), nullable=False),
-    sa.Column('size_bytes', sa.Integer(), nullable=False),
-    sa.Column('sha256', sa.String(length=64), nullable=False),
-    sa.Column('schema_version', sa.String(length=32), nullable=True),
-    sa.Column('verified_at', sa.String(length=32), nullable=True),
-    sa.Column('verify_ok', sa.Boolean(), nullable=True),
-    sa.Column('secondary_copied', sa.Boolean(), nullable=False),
-    sa.Column('secondary_error', sa.String(length=500), nullable=True),
-    sa.CheckConstraint("reason IN ('pre_migration','pre_restore','upload','approval','daily','manual')", name=op.f('ck_backups_reason_valid')),
-    sa.PrimaryKeyConstraint('id', name=op.f('pk_backups')),
-    sa.UniqueConstraint('filename', name=op.f('uq_backups_filename'))
-    )
     op.create_table('divisions',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('code', sa.String(length=32, collation='NOCASE'), nullable=False),
@@ -607,6 +590,5 @@ def downgrade() -> None:
         batch_op.drop_index(batch_op.f('ix_divisions_is_demo'))
 
     op.drop_table('divisions')
-    op.drop_table('backups')
     op.drop_table('approval_levels')
     # ### end Alembic commands ###

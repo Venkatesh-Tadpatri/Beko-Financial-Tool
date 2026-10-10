@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 backend/.venv/
 __pycache__/
 *.pyc
@@ -13,9 +13,9 @@ desktop/dist/
 installer/out/
 dist/
 
-# Local data / secrets — never commit
+# Local data / secrets â€” never commit
 *.db
 *.db-wal
 *.db-shm
-!backend/tests/fixtures/*.db
+!backend/tests/fixtures/backups/*.db
 .env

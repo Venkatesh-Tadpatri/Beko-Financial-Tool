@@ -70,6 +70,8 @@ class Settings:
     idle_timeout_minutes: int = 15
     lockout_threshold: int = 5
     lockout_minutes: int = 5
+    apply_permissions: bool = False  # restrict data-folder ACL on first run (on in the real app)
+    background_jobs: bool = False  # hourly daily-backup check (on in the real app)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -83,4 +85,6 @@ class Settings:
             app_key=app_key,
             port=int(os.environ.get("FVT_PORT", "0")),
             allowed_origins=origins,
+            apply_permissions=True,
+            background_jobs=True,
         )

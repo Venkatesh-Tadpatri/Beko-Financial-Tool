@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -8,23 +10,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.core.appkey import AppKeyMiddleware
 from app.core.config import Settings
-from app.core.db import make_engine, make_session_factory
-from app.services.migrations import upgrade_to_head
+from app.services.backup import BackupService
+from app.services.startup import run_startup
 from app.state import AppState, Mode
 
-
-def startup(state: AppState) -> None:
-    paths = state.settings.paths
-    paths.ensure()
-    state.engine = make_engine(paths.db_file)
-    state.session_factory = make_session_factory(state.engine)
-    upgrade_to_head(state.engine)
-    state.mode = Mode.READY
+log = logging.getLogger(__name__)
+DAILY_CHECK_SECONDS = 3600
 
 
-def shutdown(state: AppState) -> None:
-    if state.engine is not None:
-        state.engine.dispose()
+def _daily_backup_loop(state: AppState, stop: threading.Event) -> None:
+    while not stop.wait(DAILY_CHECK_SECONDS):
+        if state.mode != Mode.READY:
+            continue
+        try:
+            BackupService(state.settings.paths).ensure_daily()
+        except Exception:
+            log.exception("daily backup failed; will retry")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -32,9 +33,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        startup(state)
+        run_startup(state)
+        stop = threading.Event()
+        if state.settings.background_jobs:
+            threading.Thread(target=_daily_backup_loop, args=(state, stop), daemon=True,
+                             name="daily-backup").start()
         yield
-        shutdown(state)
+        stop.set()
+        state.close_database()
 
     app = FastAPI(title="Financial Visualization Tool", version=__version__, lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
@@ -54,6 +60,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/health")
     def health(request: Request) -> dict:
         s: AppState = request.app.state.fvt
-        return {"status": "ok", "mode": s.mode.value, "version": __version__}
+        body = {"status": "ok", "mode": s.mode.value, "version": __version__}
+        if s.mode == Mode.RECOVERY:
+            body["recovery"] = {"code": s.recovery_code, "message": s.problems[0] if s.problems else ""}
+        return body
 
     return app
