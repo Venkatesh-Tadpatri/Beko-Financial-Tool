@@ -55,6 +55,27 @@ def test_sidecar_announces_port_and_serves(tmp_path):
         port = int(line.split("=", 1)[1])
         r = httpx.get(f"http://127.0.0.1:{port}/api/health", headers={"X-App-Key": key}, timeout=10)
         assert r.status_code == 200
+        r = httpx.post(f"http://127.0.0.1:{port}/api/system/shutdown", headers={"X-App-Key": key}, timeout=10)
+        assert r.status_code == 202
+        assert proc.wait(timeout=20) == 0  # graceful exit
     finally:
-        proc.terminate()
-        proc.wait(timeout=10)
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=10)
+
+
+def test_sidecar_exits_when_parent_process_dies(tmp_path):
+    backend = Path(__file__).resolve().parents[1]
+    parent = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
+    env = {**os.environ, "FVT_APP_KEY": "k" * 40, "FVT_DATA_DIR": str(tmp_path / "data"),
+           "FVT_PARENT_PID": str(parent.pid)}
+    proc = subprocess.Popen([sys.executable, "run.py"], cwd=backend, env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        assert proc.stdout.readline().startswith("FVT_READY")
+        parent.kill()  # Electron crashes
+        assert proc.wait(timeout=30) == 0
+    finally:
+        for p in (proc, parent):
+            if p.poll() is None:
+                p.kill()

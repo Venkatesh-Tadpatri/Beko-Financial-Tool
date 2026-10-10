@@ -68,4 +68,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             body["recovery"] = {"code": s.recovery_code, "message": s.problems[0] if s.problems else ""}
         return body
 
+    @app.post("/api/system/shutdown", status_code=202)
+    def shutdown_sidecar(request: Request) -> dict:
+        """Graceful stop requested by Electron on quit. The desktop proxy never forwards this path."""
+        stop = getattr(request.app.state, "request_shutdown", None)
+        if stop is not None:
+            stop()
+        return {"status": "stopping"}
+
     return app
