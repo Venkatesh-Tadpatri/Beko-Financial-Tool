@@ -74,11 +74,12 @@ class UploadBatch(TimestampMixin, Base):
     row_count: Mapped[int] = mapped_column(default=0)
     reimport_of: Mapped[int | None] = mapped_column(ForeignKey("upload_batches.id"))
     is_demo: Mapped[bool] = mapped_column(default=False, index=True)
+    summary: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")  # JSON, from the last validation
 
 
 class StagingRow(Base):
     __tablename__ = "staging_rows"
-    __table_args__ = (UniqueConstraint("batch_id", "row_no"),)
+    __table_args__ = (UniqueConstraint("batch_id", "row_no"), Index("ix_staging_rows_batch_excluded", "batch_id", "excluded"))
 
     id: Mapped[int] = mapped_column(primary_key=True)
     batch_id: Mapped[int] = mapped_column(ForeignKey("upload_batches.id", ondelete="CASCADE"), index=True)

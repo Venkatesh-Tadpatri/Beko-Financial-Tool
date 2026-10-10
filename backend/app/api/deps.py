@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -106,6 +107,24 @@ def authenticate_short(request: Request, state: AppState, perm: Perm, db: Sessio
         raise HTTPException(status.HTTP_403_FORBIDDEN,
                             detail={"code": "forbidden", "message": "You do not have permission for this."})
     return principal
+
+
+@contextmanager
+def short_transaction(request: Request, state: AppState, perm: Perm) -> Iterator[tuple[Session, Principal]]:
+    """Authenticate and do the work in one transaction that is COMMITTED when the block ends,
+    so the caller can act on the committed result (e.g. take a backup that includes it)."""
+    if state.mode != Mode.READY or state.session_factory is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail={"code": "not_ready", "mode": state.mode.value})
+    session = state.session_factory()
+    try:
+        principal = authenticate_short(request, state, perm, session)
+        yield session, principal
+        session.commit()
+    except BaseException:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def require(perm: Perm):

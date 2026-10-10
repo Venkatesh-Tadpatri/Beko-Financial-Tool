@@ -4,10 +4,14 @@ import { authApi } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useIdleTimer } from '../auth/useIdleTimer';
 import { Alert, Button, Logo } from '../components/ui';
+import { ApprovalsPage } from '../pages/ApprovalsPage';
 import { AuditLogPage } from '../pages/AuditLogPage';
 import { BackupsPage } from '../pages/BackupsPage';
+import { BatchPage } from '../pages/BatchPage';
 import { DashboardPage } from '../pages/DashboardPage';
+import { MasterDataPage } from '../pages/MasterDataPage';
 import { NotBuiltYetPage } from '../pages/NotBuiltYetPage';
+import { UploadPage } from '../pages/UploadPage';
 import { UsersPage } from '../pages/UsersPage';
 import { NAV, ROLE_LABELS, type NavItem } from './nav';
 
@@ -24,7 +28,7 @@ export function AppShell() {
   const location = useLocation();
   const allowed = (item: NavItem) => user?.permissions.includes(item.permission) ?? false;
   const groups = NAV.map((g) => ({ ...g, items: g.items.filter(allowed) })).filter((g) => g.items.length > 0);
-  const current = NAV.flatMap((g) => g.items).find((i) => i.to === location.pathname);
+  const current = NAV.flatMap((g) => g.items).find((i) => i.to === location.pathname || (i.to !== '/' && location.pathname.startsWith(`${i.to}/`)));
 
   const onIdle = useCallback(() => void logout('idle'), [logout]);
   const onHeartbeat = useCallback(() => void authApi.heartbeat().catch(() => undefined), []);
@@ -84,6 +88,10 @@ export function AppShell() {
             <Route path="/" element={<DashboardPage />} />
             {[
               { to: '/users', perm: 'manage_users', el: <UsersPage /> },
+              { to: '/upload', perm: 'upload_data', el: <UploadPage /> },
+              { to: '/upload/:id', perm: 'view_reports', el: <BatchPage /> },
+              { to: '/approvals', perm: 'approve_data', el: <ApprovalsPage /> },
+              { to: '/master-data', perm: 'manage_master_data', el: <MasterDataPage /> },
               { to: '/backups', perm: 'manage_backups', el: <BackupsPage /> },
               { to: '/audit-log', perm: 'view_audit_log', el: <AuditLogPage /> },
             ].map((r) => (

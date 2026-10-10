@@ -14,6 +14,7 @@ export interface FvtBridge {
   isDesktop: boolean;
   api: (req: BridgeRequest) => Promise<BridgeResponse>;
   chooseBackupFile: () => Promise<string | null>;
+  chooseExcelFile: () => Promise<string | null>;
   chooseFolder: (title: string) => Promise<string | null>;
   relaunch: () => Promise<void>;
 }

@@ -277,6 +277,14 @@ def test_audit_chain_detects_tampering_outside_the_app(client):
     assert result["ok"] is False and result["first_bad_id"] == 2
 
 
+@pytest.mark.real_hashing
+def test_production_hash_parameters():
+    from app.core.security import hash_password
+
+    h = hash_password("Str0ng!Passw0rd")
+    assert h.startswith("$argon2id$") and "m=65536,t=3,p=4" in h
+
+
 def test_audit_refuses_secret_fields(session_factory):
     with session_factory() as s:
         with pytest.raises(ValueError):

@@ -2,4 +2,5 @@
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
+markers = ["real_hashing: use the production Argon2id parameters"]
 filterwarnings = ["error::DeprecationWarning:app.*"]

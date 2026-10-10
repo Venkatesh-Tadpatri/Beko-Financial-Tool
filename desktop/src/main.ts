@@ -116,6 +116,15 @@ function registerShellHandlers(): void {
     });
     return r.canceled ? null : r.filePaths[0];
   });
+  ipcMain.handle('fvt:choose-excel-file', async (e) => {
+    guard(e);
+    const r = await dialog.showOpenDialog(mainWindow!, {
+      title: 'Choose the Excel file to upload',
+      filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }],
+      properties: ['openFile'],
+    });
+    return r.canceled ? null : r.filePaths[0];
+  });
   ipcMain.handle('fvt:choose-folder', async (e, title: unknown) => {
     guard(e);
     const r = await dialog.showOpenDialog(mainWindow!, {

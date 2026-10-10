@@ -34,9 +34,9 @@ export const NAV: NavGroup[] = [
   {
     label: 'Data',
     items: [
-      { to: '/upload', label: 'Upload data', permission: 'upload_data', icon: I.upload, phase: 'Excel import' },
-      { to: '/approvals', label: 'Approvals', permission: 'approve_data', icon: I.approve, phase: 'approval workflow' },
-      { to: '/master-data', label: 'Master data', permission: 'manage_master_data', icon: I.master, phase: 'master data' },
+      { to: '/upload', label: 'Upload data', permission: 'upload_data', icon: I.upload },
+      { to: '/approvals', label: 'Approvals', permission: 'approve_data', icon: I.approve },
+      { to: '/master-data', label: 'Master data', permission: 'manage_master_data', icon: I.master },
     ],
   },
   {

@@ -41,13 +41,17 @@ def _corrupt(db: Path) -> None:
     db.write_bytes(bytes(data))
 
 
+REAL_HEAD = migrations_mod.head_revision()
+TEST_REV = "test9001"
+
+
 def _migrations_with(tmp_path: Path, body: str) -> Path:
-    """Copy of the real migrations plus a test revision 0002."""
+    """Copy of the real migrations plus a test revision on top of the real head."""
     d = tmp_path / "migrations"
     shutil.copytree(REAL_MIGRATIONS, d, ignore=shutil.ignore_patterns("__pycache__"))
-    (d / "versions" / "0002_test.py").write_text(
+    (d / "versions" / f"{TEST_REV}_test.py").write_text(
         "import sqlalchemy as sa\nfrom alembic import op\n"
-        "revision = '0002'\ndown_revision = '0001'\nbranch_labels = None\ndepends_on = None\n"
+        f"revision = '{TEST_REV}'\ndown_revision = '{REAL_HEAD}'\nbranch_labels = None\ndepends_on = None\n"
         f"def upgrade():\n{body}\ndef downgrade():\n    pass\n"
     )
     return d
@@ -115,11 +119,11 @@ def test_pending_migration_backs_up_then_migrates_copy_and_keeps_data(settings, 
     assert sales_total(settings.paths.db_file) == 25 * 777
     conn = sqlite3.connect(str(settings.paths.db_file))
     assert "country" in [r[1] for r in conn.execute("PRAGMA table_info(oems)")]
-    assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0002"
+    assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == TEST_REV
     conn.close()
 
     pre = [e for e in BackupService(settings.paths).list() if e.reason == "pre_migration"]
-    assert len(pre) == 1 and pre[0].schema_version == "0001"
+    assert len(pre) == 1 and pre[0].schema_version == REAL_HEAD
     assert not list(settings.paths.data_dir.glob("*.migrating*"))
 
 
@@ -134,7 +138,7 @@ def test_failed_migration_rolls_back_and_leaves_previous_database(settings, tmp_
     assert "has not been changed" in state.problems[0]
     db = settings.paths.db_file
     assert table_counts(db) == before  # no 'half_done' table, nothing lost
-    assert check_database_file(db).schema_version == "0001"
+    assert check_database_file(db).schema_version == REAL_HEAD
     assert not list(settings.paths.data_dir.glob("*.migrating*"))
 
 

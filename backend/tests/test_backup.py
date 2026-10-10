@@ -12,6 +12,7 @@ from app.models import SalesFact
 from app.services import backup as backup_mod
 from app.services import local_config
 from app.services.backup import BackupError, BackupService, check_database_file, read_manifest
+from app.services.migrations import head_revision as migrations_head
 from tests.helpers import make_user_and_batch, sales_total
 
 
@@ -25,7 +26,7 @@ def test_backup_is_verified_self_contained_and_indexed(svc, paths):
     e = svc.create("manual")
     f = paths.default_backup_dir / e.filename
     assert f.is_file() and not (paths.default_backup_dir / (e.filename + "-wal")).exists()
-    assert e.verify_ok and e.schema_version == "0001"
+    assert e.verify_ok and e.schema_version == migrations_head()
     assert backup_mod.sha256_file(f) == e.sha256
     conn = sqlite3.connect(str(f))
     assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "delete"

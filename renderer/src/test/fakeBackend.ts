@@ -1,6 +1,7 @@
 import type { BackupRow } from '../api/admin';
 import type { User } from '../api/client';
 import type { BridgeRequest, BridgeResponse } from '../global';
+import { FakeData } from './fakeData';
 
 const ROLE_PERMS: Record<User['role'], string[]> = {
   viewer: ['export_reports', 'view_reports'],
@@ -31,6 +32,8 @@ export class FakeBackend {
   relaunched = false;
   chosenFile: string | null = null;
   chosenFolder: string | null = null;
+  chosenExcel: string | null = null;
+  data = new FakeData();
   backups: BackupRow[] = [
     { filename: 'app-20261010-090000-000000-daily.db', reason: 'daily', created_at: '2026-10-10T09:00:00+00:00', size_bytes: 344064, schema_version: '0001', verified_at: '2026-10-10T09:00:00+00:00', verify_ok: true, secondary_copied: false, secondary_error: null },
     { filename: 'app-20261009-090000-000000-daily.db', reason: 'daily', created_at: '2026-10-09T09:00:00+00:00', size_bytes: 300000, schema_version: '0001', verified_at: '2026-10-09T09:00:00+00:00', verify_ok: true, secondary_copied: true, secondary_error: null },
@@ -48,7 +51,7 @@ export class FakeBackend {
       is_active: true,
       is_founder: this.users.length === 0,
       locked: false,
-      user: { id: this.users.length + 1, username, display_name: username, role, must_change_password: mustChange, permissions: ROLE_PERMS[role] },
+      user: { id: this.users.length + 1, username, display_name: username, role, must_change_password: mustChange, permissions: [...ROLE_PERMS[role]] },
     };
     this.users.push(u);
     return u;
@@ -59,6 +62,7 @@ export class FakeBackend {
       isDesktop: true,
       api: (req) => Promise.resolve(this.handle(req)),
       chooseBackupFile: () => Promise.resolve(this.chosenFile),
+      chooseExcelFile: () => Promise.resolve(this.chosenExcel),
       chooseFolder: () => Promise.resolve(this.chosenFolder),
       relaunch: () => {
         this.relaunched = true;
@@ -96,6 +100,8 @@ export class FakeBackend {
     const userMatch = /^\/api\/users\/(\d+)(?:\/([a-z-]+))?$/.exec(route);
     const backupMatch = /^\/api\/backups\/([^/]+)\/(verify|restore)$/.exec(route);
 
+    const dataResponse = this.data.handle(req, route, this.signedIn);
+    if (dataResponse) return dataResponse;
     if (userMatch) {
       const u = this.users.find((x) => x.user.id === Number(userMatch[1]));
       if (!u) return this.err(404, 'not_found', 'User not found.');

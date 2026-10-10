@@ -12,6 +12,20 @@ from app.main import create_app
 from app.services.migrations import upgrade_to_head
 
 
+@pytest.fixture(autouse=True)
+def fast_password_hashing(monkeypatch, request):
+    """Production uses Argon2id at 64 MiB / t=3 (see test_production_hash_parameters).
+    Tests use a light setting so the suite runs in minutes, not tens of minutes."""
+    if request.node.get_closest_marker("real_hashing"):
+        return
+    from argon2 import PasswordHasher
+    from argon2.low_level import Type
+
+    from app.core import security
+
+    monkeypatch.setattr(security, "_hasher", PasswordHasher(time_cost=1, memory_cost=1024, parallelism=1, type=Type.ID))
+
+
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     return Settings(paths=DataPaths(tmp_path / "FinancialVisualizationTool"), app_key=secrets.token_urlsafe(32))
