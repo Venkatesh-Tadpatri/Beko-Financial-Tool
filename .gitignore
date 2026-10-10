@@ -1,0 +1,21 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/build/
+backend/dist/
+
+# Node
+node_modules/
+renderer/dist/
+desktop/dist/
+installer/out/
+dist/
+
+# Local data / secrets — never commit
+*.db
+*.db-wal
+*.db-shm
+!backend/tests/fixtures/*.db
+.env
