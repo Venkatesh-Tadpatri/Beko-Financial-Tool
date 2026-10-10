@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api import auth as auth_api
 from app.core.appkey import AppKeyMiddleware
 from app.core.config import Settings
 from app.services.backup import BackupService
@@ -56,6 +57,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_headers=["Authorization", "Content-Type", "X-App-Key"],
             expose_headers=["Content-Disposition"],
         )
+
+    app.include_router(auth_api.router)
 
     @app.get("/api/health")
     def health(request: Request) -> dict:
