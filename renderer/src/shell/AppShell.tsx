@@ -4,8 +4,11 @@ import { authApi } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useIdleTimer } from '../auth/useIdleTimer';
 import { Alert, Button, Logo } from '../components/ui';
+import { AuditLogPage } from '../pages/AuditLogPage';
+import { BackupsPage } from '../pages/BackupsPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { NotBuiltYetPage } from '../pages/NotBuiltYetPage';
+import { UsersPage } from '../pages/UsersPage';
 import { NAV, ROLE_LABELS, type NavItem } from './nav';
 
 function Icon({ d }: { d: string }) {
@@ -79,6 +82,13 @@ export function AppShell() {
           )}
           <Routes>
             <Route path="/" element={<DashboardPage />} />
+            {[
+              { to: '/users', perm: 'manage_users', el: <UsersPage /> },
+              { to: '/backups', perm: 'manage_backups', el: <BackupsPage /> },
+              { to: '/audit-log', perm: 'view_audit_log', el: <AuditLogPage /> },
+            ].map((r) => (
+              <Route key={r.to} path={r.to} element={user?.permissions.includes(r.perm) ? r.el : <Navigate to="/" replace />} />
+            ))}
             {NAV.flatMap((g) => g.items)
               .filter((i) => i.phase)
               .map((i) => (

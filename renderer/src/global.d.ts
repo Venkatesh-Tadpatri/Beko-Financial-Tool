@@ -10,12 +10,17 @@ export interface BridgeResponse {
   data: unknown;
 }
 
+export interface FvtBridge {
+  isDesktop: boolean;
+  api: (req: BridgeRequest) => Promise<BridgeResponse>;
+  chooseBackupFile: () => Promise<string | null>;
+  chooseFolder: (title: string) => Promise<string | null>;
+  relaunch: () => Promise<void>;
+}
+
 declare global {
   interface Window {
     /** Exposed by desktop/src/preload.ts. */
-    fvt: {
-      isDesktop: boolean;
-      api: (req: BridgeRequest) => Promise<BridgeResponse>;
-    };
+    fvt: FvtBridge;
   }
 }

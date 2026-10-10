@@ -96,6 +96,18 @@ def current_principal(principal: Principal = Depends(current_principal_allow_pw_
     return principal
 
 
+def authenticate_short(request: Request, state: AppState, perm: Perm, db: Session) -> Principal:
+    """Same checks as require(perm), for routes that manage their own (short) transaction."""
+    principal = _authenticate(request, db, state)
+    if principal.user.must_change_password:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail={"code": "password_change_required",
+                                                               "message": "You must change your password before continuing."})
+    if not has_perm(principal.user.role, perm):
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            detail={"code": "forbidden", "message": "You do not have permission for this."})
+    return principal
+
+
 def require(perm: Perm):
     """Route dependency: authenticated, password current, and holding `perm`."""
 

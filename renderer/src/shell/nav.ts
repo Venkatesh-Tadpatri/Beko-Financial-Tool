@@ -42,9 +42,9 @@ export const NAV: NavGroup[] = [
   {
     label: 'Administration',
     items: [
-      { to: '/users', label: 'Users', permission: 'manage_users', icon: I.users, phase: 'user management' },
-      { to: '/backups', label: 'Backups', permission: 'manage_backups', icon: I.backup, phase: 'backup screen' },
-      { to: '/audit-log', label: 'Audit log', permission: 'view_audit_log', icon: I.audit, phase: 'audit log screen' },
+      { to: '/users', label: 'Users', permission: 'manage_users', icon: I.users },
+      { to: '/backups', label: 'Backups', permission: 'manage_backups', icon: I.backup },
+      { to: '/audit-log', label: 'Audit log', permission: 'view_audit_log', icon: I.audit },
     ],
   },
 ];

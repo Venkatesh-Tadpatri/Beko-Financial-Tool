@@ -60,7 +60,8 @@ export async function api<T>(method: BridgeRequest['method'], path: string, body
     code = 'invalid_input';
     message = 'Please check the highlighted fields.';
   }
-  if (res.status === 401 && path !== '/api/auth/login') onUnauthorized?.(code, message);
+  // A 401 from sign-in or recovery is a wrong password, not an ended session.
+  if (res.status === 401 && path !== '/api/auth/login' && !path.startsWith('/api/recovery/')) onUnauthorized?.(code, message);
   throw new ApiError(res.status, code, message);
 }
 

@@ -410,6 +410,8 @@ def replace_database_file(db_file: Path, new_file: Path) -> None:
         for suffix in ("-wal", "-shm"):
             Path(str(db_file) + suffix).unlink(missing_ok=True)
         os.replace(staging, db_file)
+    except OSError as exc:  # e.g. another program has the file open; nothing has been replaced
+        raise BackupError("the database file is in use by another program; close it and try again") from exc
     finally:
         staging.unlink(missing_ok=True)
     after = check_database_file(db_file)

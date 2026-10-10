@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, net, protocol, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ApiProxy } from './apiProxy.js';
@@ -83,12 +83,14 @@ function createWindow(): BrowserWindow {
     if (!allowed) e.preventDefault();
   });
 
-  void win.loadURL(isDev ? DEV_URL! : `${APP_ORIGIN}/index.html`);
+  const smokePage = isDev ? (process.env.FVT_SMOKE_PAGE ?? '') : ''; // e.g. "#/backups" (dev smoke only)
+  void win.loadURL(isDev ? DEV_URL! + smokePage : `${APP_ORIGIN}/index.html`);
 
   // Development smoke check: FVT_SMOKE_SCREENSHOT=<file.png> saves the screen after a delay and quits.
   const shot = isDev ? process.env.FVT_SMOKE_SCREENSHOT : undefined;
   if (shot) {
-    win.webContents.once('did-finish-load', () => {
+    const loaded = new Promise<void>((resolve) => win.webContents.once('did-finish-load', () => resolve()));
+    void Promise.all([loaded, sidecar?.ready]).then(() => {
       setTimeout(async () => {
         const image = await win.webContents.capturePage();
         const { writeFileSync } = await import('node:fs');
@@ -98,6 +100,35 @@ function createWindow(): BrowserWindow {
     });
   }
   return win;
+}
+
+/** Native dialogs and relaunch, for the backup and recovery screens. */
+function registerShellHandlers(): void {
+  const guard = (e: IpcMainInvokeEvent) => {
+    if (!isTrustedSender(e)) throw new Error('untrusted sender');
+  };
+  ipcMain.handle('fvt:choose-backup-file', async (e) => {
+    guard(e);
+    const r = await dialog.showOpenDialog(mainWindow!, {
+      title: 'Choose a backup to restore',
+      filters: [{ name: 'Backup files', extensions: ['db'] }],
+      properties: ['openFile'],
+    });
+    return r.canceled ? null : r.filePaths[0];
+  });
+  ipcMain.handle('fvt:choose-folder', async (e, title: unknown) => {
+    guard(e);
+    const r = await dialog.showOpenDialog(mainWindow!, {
+      title: typeof title === 'string' ? title.slice(0, 100) : 'Choose a folder',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return r.canceled ? null : r.filePaths[0];
+  });
+  ipcMain.handle('fvt:relaunch', (e) => {
+    guard(e);
+    app.relaunch();
+    app.quit(); // before-quit stops the data service gracefully first
+  });
 }
 
 async function boot(): Promise<void> {
@@ -111,6 +142,7 @@ async function boot(): Promise<void> {
   sidecar = new Sidecar({ appRoot: app.getAppPath(), packaged: app.isPackaged, resourcesPath: process.resourcesPath, dataDir });
   const proxy = new ApiProxy(sidecar);
   proxy.register(isTrustedSender);
+  registerShellHandlers();
 
   try {
     sidecar.start();

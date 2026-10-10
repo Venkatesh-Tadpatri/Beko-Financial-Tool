@@ -18,7 +18,7 @@ function renderApp() {
 }
 
 async function signIn(username: string, password = GOOD) {
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   await user.type(await screen.findByLabelText('Username'), username);
   await user.type(screen.getByLabelText('Password'), password);
   await user.click(screen.getByRole('button', { name: 'Sign in' }));
@@ -40,7 +40,7 @@ describe('first run', () => {
   });
 
   it('keeps the button disabled until the password policy is met, then creates the account', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderApp();
     await user.type(await screen.findByLabelText('Username'), 'founder');
     const submit = screen.getByRole('button', { name: 'Create Super Admin' });
@@ -64,7 +64,7 @@ describe('first run', () => {
   });
 
   it('flags a password that contains the username', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderApp();
     await user.type(await screen.findByLabelText('Username'), 'founder');
     await user.type(screen.getByLabelText('Password'), 'Founder!2026x');
@@ -222,6 +222,8 @@ describe('recovery mode', () => {
     renderApp();
     expect(await screen.findByRole('heading', { name: 'The database needs to be restored' })).toBeInTheDocument();
     expect(screen.getByText(/integrity check/)).toBeInTheDocument();
-    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Restore and restart' })).toBeInTheDocument();
   });
 });
