@@ -1,8 +1,10 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { authApi } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useIdleTimer } from '../auth/useIdleTimer';
+import { ChangePasswordForm } from '../components/ChangePasswordForm';
+import { Dialog } from '../components/kit';
 import { Alert, Button, Logo } from '../components/ui';
 import { ApprovalsPage } from '../pages/ApprovalsPage';
 import { AuditLogPage } from '../pages/AuditLogPage';
@@ -26,6 +28,7 @@ function Icon({ d }: { d: string }) {
 export function AppShell() {
   const { user, logout, notice, setNotice } = useAuth();
   const location = useLocation();
+  const [changingPassword, setChangingPassword] = useState(false);
   const allowed = (item: NavItem) => user?.permissions.includes(item.permission) ?? false;
   const groups = NAV.map((g) => ({ ...g, items: g.items.filter(allowed) })).filter((g) => g.items.length > 0);
   const current = NAV.flatMap((g) => g.items).find((i) => i.to === location.pathname || (i.to !== '/' && location.pathname.startsWith(`${i.to}/`)));
@@ -68,9 +71,14 @@ export function AppShell() {
         <div className="mt-4 rounded-lg bg-navy-800 px-3 py-3">
           <div className="truncate text-sm font-medium text-white">{user?.display_name || user?.username}</div>
           <div className="text-xs text-navy-300">{ROLE_LABELS[user?.role ?? 'viewer']}</div>
-          <button onClick={() => void logout()} className="mt-2 text-xs font-medium text-accent-400 hover:text-white">
-            Sign out
-          </button>
+          <div className="mt-2 flex gap-4">
+            <button onClick={() => setChangingPassword(true)} className="text-xs font-medium text-navy-300 hover:text-white">
+              Change password
+            </button>
+            <button onClick={() => void logout()} className="text-xs font-medium text-accent-400 hover:text-white">
+              Sign out
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -106,6 +114,19 @@ export function AppShell() {
           </Routes>
         </main>
       </div>
+
+      {changingPassword && (
+        <Dialog title="Change password" onClose={() => setChangingPassword(false)}>
+          <ChangePasswordForm
+            fixedUsername={user?.username ?? ''}
+            onSubmit={async (c) => {
+              await authApi.changePassword(c.current, c.next, c.confirm);
+              setChangingPassword(false);
+              setNotice({ kind: 'success', text: 'Your password has been changed. Any other signed-in sessions were signed out.' });
+            }}
+          />
+        </Dialog>
+      )}
 
       {secondsLeft !== null && (
         <div role="alertdialog" aria-labelledby="idle-title" className="fixed inset-0 z-50 grid place-items-center bg-navy-950/50">

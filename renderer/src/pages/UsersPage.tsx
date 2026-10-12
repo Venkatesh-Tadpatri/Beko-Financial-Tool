@@ -1,6 +1,8 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { usersApi, type Role, type TemporaryPassword, type UserRow } from '../api/admin';
+import { usersApi, type Role, type UserRow } from '../api/admin';
 import { useAuth } from '../auth/AuthContext';
+import { passwordOk } from '../auth/passwordPolicy';
+import { PasswordChecklist } from '../components/PasswordChecklist';
 import { Badge, Card, Dialog, errorText, formatDateTime, LinkButton, Select, Table, Td, useAsync } from '../components/kit';
 import { Alert, Button, Field } from '../components/ui';
 import { ROLE_LABELS } from '../shell/nav';
@@ -24,8 +26,7 @@ const ROLE_TONE: Record<Role, 'gray' | 'blue' | 'teal' | 'amber' | 'red'> = {
 type Pending =
   | { kind: 'add' }
   | { kind: 'edit'; user: UserRow }
-  | { kind: 'reset' | 'disable'; user: UserRow }
-  | { kind: 'temp'; result: TemporaryPassword; reason: 'created' | 'reset' };
+  | { kind: 'reset' | 'disable'; user: UserRow };
 
 export function UsersPage() {
   const { user: me } = useAuth();
@@ -95,7 +96,8 @@ export function UsersPage() {
         <UserDialog
           onClose={close}
           onSaved={(r) => {
-            setPending({ kind: 'temp', result: r as TemporaryPassword, reason: 'created' });
+            close();
+            setMessage(`${r.username} has been created. Give them the starting password; they must choose their own when they first sign in.`);
             void users.reload();
           }}
         />
@@ -112,21 +114,15 @@ export function UsersPage() {
         />
       )}
       {pending?.kind === 'reset' && (
-        <ConfirmDialog
-          title="Reset password"
-          confirm="Reset password"
+        <ResetPasswordDialog
+          user={pending.user}
           onClose={close}
-          onConfirm={async () => {
-            const r = await usersApi.resetPassword(pending.user.id);
-            setPending({ kind: 'temp', result: r, reason: 'reset' });
+          onDone={() => {
+            close();
+            setMessage(`The password for ${pending.user.username} has been reset. They must choose their own when they next sign in.`);
             void users.reload();
           }}
-        >
-          <p className="text-sm">
-            <strong>{pending.user.display_name}</strong> will be signed out and given a new temporary password. They must choose their own password
-            when they next sign in.
-          </p>
-        </ConfirmDialog>
+        />
       )}
       {pending?.kind === 'disable' && (
         <ConfirmDialog
@@ -146,16 +142,18 @@ export function UsersPage() {
           </p>
         </ConfirmDialog>
       )}
-      {pending?.kind === 'temp' && <TempPasswordDialog result={pending.result} reason={pending.reason} onClose={close} />}
     </div>
   );
 }
 
-function UserDialog({ user, onClose, onSaved }: { user?: UserRow; onClose: () => void; onSaved: (r: TemporaryPassword | UserRow) => void }) {
+function UserDialog({ user, onClose, onSaved }: { user?: UserRow; onClose: () => void; onSaved: (r: UserRow) => void }) {
   const [username, setUsername] = useState(user?.username ?? '');
   const [name, setName] = useState(user?.display_name ?? '');
   const [role, setRole] = useState<Role>(user?.role ?? 'viewer');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
+  const canSave = user ? true : username.trim().length > 0 && passwordOk(password, username) && password === confirm;
   const [error, setError] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
@@ -163,7 +161,7 @@ function UserDialog({ user, onClose, onSaved }: { user?: UserRow; onClose: () =>
     setBusy(true);
     setError(null);
     try {
-      onSaved(user ? await usersApi.update(user.id, { display_name: name, role }) : await usersApi.create(username.trim(), name.trim(), role));
+      onSaved(user ? await usersApi.update(user.id, { display_name: name, role }) : await usersApi.create(username.trim(), name.trim(), role, password, confirm));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -180,7 +178,7 @@ function UserDialog({ user, onClose, onSaved }: { user?: UserRow; onClose: () =>
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" form="user-form" busy={busy} disabled={!user && !username.trim()}>
+          <Button type="submit" form="user-form" busy={busy} disabled={!canSave}>
             {user ? 'Save' : 'Create user'}
           </Button>
         </>
@@ -198,7 +196,14 @@ function UserDialog({ user, onClose, onSaved }: { user?: UserRow; onClose: () =>
           ))}
         </Select>
         <p className="text-xs text-muted">{user?.is_founder ? 'The original Super Admin always keeps the Super Admin role.' : ROLE_HELP[role]}</p>
-        {!user && <p className="text-xs text-muted">A temporary password is created for the user. They must change it when they first sign in.</p>}
+        {!user && (
+          <>
+            <Field label="Starting password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Field label="Confirm starting password" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+            <PasswordChecklist password={password} confirm={confirm} username={username} />
+            <p className="text-xs text-muted">Give this password to the user in person or by phone. They must choose their own password when they first sign in.</p>
+          </>
+        )}
       </form>
     </Dialog>
   );
@@ -255,31 +260,46 @@ function ConfirmDialog({
   );
 }
 
-function TempPasswordDialog({ result, reason, onClose }: { result: TemporaryPassword; reason: 'created' | 'reset'; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
+function ResetPasswordDialog({ user, onClose, onDone }: { user: UserRow; onClose: () => void; onDone: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const canSave = passwordOk(password, user.username) && password === confirm;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await usersApi.resetPassword(user.id, password, confirm);
+      onDone();
+    } catch (err) {
+      setError(errorText(err));
+      setBusy(false);
+    }
+  }
+
   return (
-    <Dialog title={reason === 'created' ? 'User created' : 'Password reset'} onClose={onClose} footer={<Button onClick={onClose}>Done</Button>}>
-      <p className="text-sm">
-        Temporary password for <strong>{result.user.username}</strong>:
-      </p>
-      <div className="flex items-center gap-3 rounded-lg border border-line bg-canvas px-4 py-3">
-        <code aria-label="Temporary password" className="flex-1 select-all font-mono text-lg tracking-wider">
-          {result.temporary_password}
-        </code>
-        <Button
-          variant="secondary"
-          onClick={async () => {
-            await navigator.clipboard?.writeText(result.temporary_password);
-            setCopied(true);
-          }}
-        >
-          {copied ? 'Copied' : 'Copy'}
-        </Button>
-      </div>
-      <Alert kind="warning">
-        This password is shown only once and is not stored anywhere readable. Give it to the user in person or by phone. They must change it when they
-        first sign in.
-      </Alert>
+    <Dialog
+      title="Reset password"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" form="reset-form" busy={busy} disabled={!canSave}>Reset password</Button>
+        </>
+      }
+    >
+      <form id="reset-form" onSubmit={submit} className="space-y-4">
+        {error && <Alert kind="error">{error}</Alert>}
+        <p className="text-sm">
+          <strong>{user.display_name}</strong> ({user.username}) will be signed out. Set a new starting password; they must choose their own when they next sign in.
+        </p>
+        <Field label="New starting password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <Field label="Confirm new starting password" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        <PasswordChecklist password={password} confirm={confirm} username={user.username} />
+      </form>
     </Dialog>
   );
 }

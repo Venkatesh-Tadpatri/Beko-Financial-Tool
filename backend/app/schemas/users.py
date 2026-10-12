@@ -25,6 +25,8 @@ class CreateUserRequest(BaseModel):
     username: str = Field(max_length=64)
     display_name: str = Field(default="", max_length=128)
     role: RoleName
+    password: str = Field(max_length=256)
+    confirm_password: str = Field(max_length=256)
 
 
 class UpdateUserRequest(BaseModel):
@@ -32,8 +34,6 @@ class UpdateUserRequest(BaseModel):
     role: RoleName | None = None
 
 
-class TemporaryPassword(BaseModel):
-    """Shown once to the Super Admin; never stored or logged in readable form."""
-
-    user: UserRow
-    temporary_password: str
+class ResetPasswordRequest(BaseModel):
+    password: str = Field(max_length=256)
+    confirm_password: str = Field(max_length=256)

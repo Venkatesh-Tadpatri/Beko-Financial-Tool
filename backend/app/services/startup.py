@@ -17,6 +17,7 @@ from alembic.script import ScriptDirectory
 from app.core.db import integrity_check, make_engine, make_session_factory
 from app.services import local_config, migrations
 from app.services.backup import BackupService, _checkpoint_and_close, sqlite_copy
+from app.services.bootstrap import ensure_default_admin
 from app.services.permissions import restrict_to_current_user
 from app.state import AppState, Mode
 
@@ -168,6 +169,8 @@ def run_startup(state: AppState) -> None:
 
     state.engine = make_engine(db_file)
     state.session_factory = make_session_factory(state.engine)
+    if state.settings.bootstrap_admin:
+        ensure_default_admin(state.session_factory)
     state.mode = Mode.READY
 
     try:

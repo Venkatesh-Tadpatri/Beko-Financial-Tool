@@ -66,19 +66,6 @@ def username_problem(username: str) -> str | None:
     return None
 
 
-_TEMP_SETS = ("ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnopqrstuvwxyz", "23456789", "!@#$%&*?")
-
-
-def temporary_password(length: int = 14) -> str:
-    """Random password that satisfies the policy; ambiguous characters (O/0, l/1) left out."""
-    rng = secrets.SystemRandom()
-    chars = [rng.choice(s) for s in _TEMP_SETS]
-    pool = "".join(_TEMP_SETS)
-    chars += [rng.choice(pool) for _ in range(length - len(chars))]
-    rng.shuffle(chars)
-    return "".join(chars)
-
-
 def new_session_token() -> str:
     return secrets.token_urlsafe(32)  # 256 bits
 

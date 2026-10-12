@@ -72,6 +72,7 @@ class Settings:
     lockout_minutes: int = 5
     apply_permissions: bool = False  # restrict data-folder ACL on first run (on in the real app)
     background_jobs: bool = False  # hourly daily-backup check (on in the real app)
+    bootstrap_admin: bool = False  # create the built-in Super Admin on an empty database (on in the real app)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -87,4 +88,5 @@ class Settings:
             allowed_origins=origins,
             apply_permissions=True,
             background_jobs=True,
+            bootstrap_admin=True,
         )

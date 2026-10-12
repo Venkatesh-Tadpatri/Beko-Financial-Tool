@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from 'react';
-import { ApiError } from '../api/client';
+import { ApiError, authApi } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { ChangePasswordForm } from '../components/ChangePasswordForm';
 import { Alert, Button, Field } from '../components/ui';
 import { AuthLayout } from './AuthLayout';
 
 export function LoginScreen() {
-  const { login, notice } = useAuth();
+  const { login, notice, setNotice } = useAuth();
+  const [mode, setMode] = useState<'sign-in' | 'change'>('sign-in');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,6 +29,28 @@ export function LoginScreen() {
     }
   }
 
+  if (mode === 'change') {
+    return (
+      <AuthLayout title="Change your password" subtitle="Enter your username and current password, then choose a new one.">
+        <ChangePasswordForm
+          askUsername
+          onSubmit={async (c) => {
+            await authApi.changePasswordAtLogin(c.username, c.current, c.next, c.confirm);
+            setMode('sign-in');
+            setUsername(c.username);
+            setError(null);
+            setNotice({ kind: 'success', text: 'Your password has been changed. Sign in with the new password.' });
+          }}
+          extraButtons={
+            <Button type="button" variant="secondary" onClick={() => setMode('sign-in')}>
+              Back to sign in
+            </Button>
+          }
+        />
+      </AuthLayout>
+    );
+  }
+
   return (
     <AuthLayout title="Sign in" subtitle="Use the account your administrator created for you.">
       <form onSubmit={submit} className="space-y-4" noValidate>
@@ -36,7 +60,12 @@ export function LoginScreen() {
         <Button type="submit" className="w-full" busy={busy} disabled={!username.trim() || !password}>
           Sign in
         </Button>
-        <p className="text-xs text-muted">Forgotten your password? Ask your Super Admin to reset it.</p>
+        <div className="flex items-center justify-between text-xs text-muted">
+          <button type="button" className="font-medium text-brand-600 hover:underline" onClick={() => { setNotice(null); setMode('change'); }}>
+            Change password
+          </button>
+          <span>Forgotten it? Ask your Super Admin to reset it.</span>
+        </div>
       </form>
     </AuthLayout>
   );

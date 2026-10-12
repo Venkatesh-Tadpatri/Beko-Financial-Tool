@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 from app.api.deps import Principal, get_db, require
 from app.core import clock
 from app.core.permissions import Perm
-from app.core.security import hash_password, temporary_password, username_problem
+from app.core.security import hash_password, password_problems, username_problem
 from app.models import User, UserSession
-from app.schemas.users import CreateUserRequest, TemporaryPassword, UpdateUserRequest, UserRow
+from app.schemas.users import CreateUserRequest, ResetPasswordRequest, UpdateUserRequest, UserRow
 from app.services import audit
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -63,21 +63,28 @@ def list_users(_: Principal = Depends(manage), db: Session = Depends(get_db)) ->
     return [row(u) for u in db.scalars(select(User).order_by(User.username))]
 
 
-@router.post("", response_model=TemporaryPassword, status_code=status.HTTP_201_CREATED)
-def create_user(body: CreateUserRequest, p: Principal = Depends(manage), db: Session = Depends(get_db)) -> TemporaryPassword:
+def _check_new_password(username: str, password: str, confirm: str) -> None:
+    if password != confirm:
+        raise _err(400, "password_mismatch", "The passwords do not match.")
+    if problems := password_problems(password, username):
+        raise _err(400, "weak_password", "Password must have " + ", ".join(problems) + ".")
+
+
+@router.post("", response_model=UserRow, status_code=status.HTTP_201_CREATED)
+def create_user(body: CreateUserRequest, p: Principal = Depends(manage), db: Session = Depends(get_db)) -> UserRow:
     username = body.username.strip()
     if problem := username_problem(username):
         raise _err(400, "invalid_username", problem)
     if db.scalar(select(User).where(User.username == username)):
         raise _err(409, "username_taken", f'The username "{username}" is already in use.')
-    temp = temporary_password()
+    _check_new_password(username, body.password, body.confirm_password)
     user = User(username=username, display_name=body.display_name.strip() or username, role=body.role,
-                password_hash=hash_password(temp), must_change_password=True)
+                password_hash=hash_password(body.password), must_change_password=True)
     db.add(user)
     db.flush()
     audit.record(db, "user_created", user=p.user, entity_type="user", entity_id=user.id,
                  details={"username": username, "role": body.role})
-    return TemporaryPassword(user=row(user), temporary_password=temp)
+    return row(user)
 
 
 @router.patch("/{user_id}", response_model=UserRow)
@@ -127,18 +134,19 @@ def enable_user(user_id: int, p: Principal = Depends(manage), db: Session = Depe
     return row(user)
 
 
-@router.post("/{user_id}/reset-password", response_model=TemporaryPassword)
-def reset_password(user_id: int, p: Principal = Depends(manage), db: Session = Depends(get_db)) -> TemporaryPassword:
+@router.post("/{user_id}/reset-password", response_model=UserRow)
+def reset_password(user_id: int, body: ResetPasswordRequest, p: Principal = Depends(manage),
+                   db: Session = Depends(get_db)) -> UserRow:
     user = _get(db, user_id)
-    temp = temporary_password()
-    user.password_hash = hash_password(temp)
+    _check_new_password(user.username, body.password, body.confirm_password)
+    user.password_hash = hash_password(body.password)
     user.must_change_password = True
     user.failed_attempts = 0
     user.locked_until = None
     _revoke_sessions(db, user, "password_reset")
     audit.record(db, "password_reset", user=p.user, entity_type="user", entity_id=user.id,
                  details={"username": user.username})
-    return TemporaryPassword(user=row(user), temporary_password=temp)
+    return row(user)
 
 
 @router.post("/{user_id}/unlock", response_model=UserRow)

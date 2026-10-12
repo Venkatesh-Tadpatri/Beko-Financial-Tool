@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import re
-
 import pytest
 
-from app.core.security import password_problems, temporary_password
-from tests.api_helpers import GOOD, actions, auth, db_exec, login, make_user, setup_and_login
+from tests.api_helpers import GOOD, START, actions, auth, db_exec, login, make_user, setup_and_login
 
 
 @pytest.fixture
@@ -13,35 +10,38 @@ def admin(client):
     return setup_and_login(client)
 
 
-def test_temporary_passwords_meet_policy_and_differ():
-    seen = {temporary_password() for _ in range(200)}
-    assert len(seen) == 200
-    assert all(not password_problems(p) for p in seen)
-    assert all(not re.search(r"[O0Il1]", p) for p in seen)
+def _create(client, admin, **over):
+    body = {"username": "priya", "display_name": "Priya S", "role": "editor", "password": START, "confirm_password": START}
+    return client.post("/api/users", headers=auth(admin), json={**body, **over})
 
 
-def test_create_user_shows_temporary_password_once_and_forces_change(client, admin):
-    r = client.post("/api/users", headers=auth(admin), json={"username": "priya", "display_name": "Priya S", "role": "editor"})
+def test_admin_sets_the_starting_password_and_user_must_change_it(client, admin):
+    r = _create(client, admin)
     assert r.status_code == 201
-    body = r.json()
-    assert body["user"]["must_change_password"] is True and body["user"]["role"] == "editor"
-    temp = body["temporary_password"]
-    token = login(client, "priya", temp)
+    assert r.json()["must_change_password"] is True and r.json()["role"] == "editor"
+    token = login(client, "priya", START)
     assert client.get("/api/auth/me", headers=auth(token)).json()["must_change_password"] is True
-    assert client.get("/api/users", headers=auth(admin)).status_code == 200
-    # the temporary password never appears in the list or the audit log
-    assert temp not in client.get("/api/users", headers=auth(admin)).text
-    assert all(temp not in (r[0] or "") for r in db_exec(client, "SELECT details FROM audit_log"))
+    # the password is never echoed back or written to the audit log
+    assert START not in r.text and START not in client.get("/api/users", headers=auth(admin)).text
+    assert all(START not in (row[0] or "") for row in db_exec(client, "SELECT details FROM audit_log"))
     assert "user_created" in actions(client)
+
+
+def test_starting_password_must_meet_policy_and_match(client, admin):
+    assert _create(client, admin, confirm_password="Other!Pass2026").json()["detail"]["code"] == "password_mismatch"
+    r = _create(client, admin, password="weak", confirm_password="weak")
+    assert r.json()["detail"]["code"] == "weak_password"
+    r = _create(client, admin, password="Priya!Pass2026", confirm_password="Priya!Pass2026")
+    assert "not containing the username" in r.json()["detail"]["message"]
 
 
 def test_duplicate_and_invalid_usernames(client, admin):
     make_user(client, admin, "ravi", "viewer")
-    r = client.post("/api/users", headers=auth(admin), json={"username": "RAVI", "role": "viewer"})
+    r = _create(client, admin, username="RAVI", role="viewer")
     assert r.status_code == 409 and r.json()["detail"]["code"] == "username_taken"
-    r = client.post("/api/users", headers=auth(admin), json={"username": "x y", "role": "viewer"})
+    r = _create(client, admin, username="x y", role="viewer")
     assert r.json()["detail"]["code"] == "invalid_username"
-    r = client.post("/api/users", headers=auth(admin), json={"username": "boss", "role": "god"})
+    r = _create(client, admin, username="boss", role="god")
     assert r.status_code == 422
 
 
@@ -87,9 +87,13 @@ def test_reset_password_forces_change_unlocks_and_signs_out(client, admin):
     for _ in range(5):
         client.post("/api/auth/login", json={"username": "ravi", "password": "Wrong!Passw0rd"})
     assert client.get("/api/users", headers=auth(admin)).json()[-1]["locked"] is True
-    r = client.post(f"/api/users/{uid}/reset-password", headers=auth(admin))
-    temp = r.json()["temporary_password"]
-    assert r.json()["user"]["locked"] is False and r.json()["user"]["must_change_password"] is True
+    temp = "Reset!Pass2026x"
+    r = client.post(f"/api/users/{uid}/reset-password", headers=auth(admin),
+                    json={"password": temp, "confirm_password": "different"})
+    assert r.json()["detail"]["code"] == "password_mismatch"
+    r = client.post(f"/api/users/{uid}/reset-password", headers=auth(admin),
+                    json={"password": temp, "confirm_password": temp})
+    assert r.json()["locked"] is False and r.json()["must_change_password"] is True
     assert client.get("/api/auth/me", headers=auth(token)).status_code == 401
     t2 = login(client, "ravi", temp)
     assert client.get("/api/auth/me", headers=auth(t2)).json()["must_change_password"] is True

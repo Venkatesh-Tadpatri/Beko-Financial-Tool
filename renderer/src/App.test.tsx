@@ -168,16 +168,52 @@ describe('forced password change', () => {
     backend.addUser('eddie', 'Temp!Pass1234', 'editor', true);
     renderApp();
     const user = await signIn('eddie', 'Temp!Pass1234');
-    expect(await screen.findByRole('heading', { name: 'Change your password' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Choose a new password' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Current (temporary) password'), 'Temp!Pass1234');
+    await user.type(screen.getByLabelText('Current password'), 'Temp!Pass1234');
     await user.type(screen.getByLabelText('New password'), 'Brand!New2026x');
     await user.type(screen.getByLabelText('Confirm new password'), 'Brand!New2026x');
     await user.click(screen.getByRole('button', { name: 'Change password' }));
 
     expect(await screen.findByRole('navigation', { name: 'Main' })).toBeInTheDocument();
     expect(screen.getByText('Your password has been changed.')).toBeInTheDocument();
+  });
+});
+
+describe('changing a password', () => {
+  beforeEach(() => backend.addUser('founder', GOOD, 'super_admin'));
+
+  it('works from the sign-in screen with username and current password', async () => {
+    const user = userEvent.setup({ delay: null });
+    renderApp();
+    await user.click(await screen.findByRole('button', { name: 'Change password' }));
+    expect(screen.getByRole('heading', { name: 'Change your password' })).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Username'), 'founder');
+    await user.type(screen.getByLabelText('Current password'), 'Wrong!Pass1234');
+    await user.type(screen.getByLabelText('New password'), 'Brand!New2026x');
+    await user.type(screen.getByLabelText('Confirm new password'), 'Brand!New2026x');
+    await user.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid username or password.');
+    await user.type(screen.getByLabelText('Current password'), GOOD);
+    await user.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByText(/Sign in with the new password/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Username')).toHaveValue('founder');
+    expect(backend.users[0].password).toBe('Brand!New2026x');
+  });
+
+  it('works from inside the app', async () => {
+    renderApp();
+    const user = await signIn('founder');
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    await user.click(within(nav).getByRole('button', { name: 'Change password' }));
+    const dialog = screen.getByRole('dialog', { name: 'Change password' });
+    await user.type(within(dialog).getByLabelText('Current password'), GOOD);
+    await user.type(within(dialog).getByLabelText('New password'), 'Brand!New2026x');
+    await user.type(within(dialog).getByLabelText('Confirm new password'), 'Brand!New2026x');
+    await user.click(within(dialog).getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByText(/Your password has been changed/)).toBeInTheDocument();
+    expect(backend.users[0].password).toBe('Brand!New2026x');
   });
 });
 

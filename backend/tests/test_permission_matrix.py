@@ -18,7 +18,7 @@ from tests.api_helpers import ROLES, auth, make_user, setup_and_login
 
 PUBLIC = {
     ("GET", "/api/health"), ("GET", "/api/system/status"), ("POST", "/api/setup/super-admin"),
-    ("POST", "/api/auth/login"), ("POST", "/api/system/shutdown"),
+    ("POST", "/api/auth/login"), ("POST", "/api/auth/change-password-at-login"), ("POST", "/api/system/shutdown"),
     ("GET", "/api/recovery/backups"), ("POST", "/api/recovery/restore"),
 }
 SIGNED_IN_ONLY = {

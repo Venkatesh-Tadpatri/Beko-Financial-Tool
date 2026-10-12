@@ -73,6 +73,8 @@ export const authApi = {
   logout: () => api<null>('POST', '/api/auth/logout'),
   me: () => api<User>('GET', '/api/auth/me'),
   heartbeat: () => api<null>('POST', '/api/auth/heartbeat'),
+  changePasswordAtLogin: (username: string, current_password: string, new_password: string, confirm_password: string) =>
+    api<null>('POST', '/api/auth/change-password-at-login', { username, current_password, new_password, confirm_password }),
   changePassword: (current_password: string, new_password: string, confirm_password: string) =>
     api<null>('POST', '/api/auth/change-password', { current_password, new_password, confirm_password }),
 };

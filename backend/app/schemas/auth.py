@@ -21,6 +21,13 @@ class ChangePasswordRequest(BaseModel):
     confirm_password: str = Field(max_length=256)
 
 
+class ChangePasswordAtLoginRequest(BaseModel):
+    username: str = Field(max_length=64)
+    current_password: str = Field(max_length=256)
+    new_password: str = Field(max_length=256)
+    confirm_password: str = Field(max_length=256)
+
+
 class UserOut(BaseModel):
     id: int
     username: str

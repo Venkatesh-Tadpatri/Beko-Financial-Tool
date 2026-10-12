@@ -15,19 +15,15 @@ export interface UserRow {
   created_at: string;
 }
 
-export interface TemporaryPassword {
-  user: UserRow;
-  temporary_password: string;
-}
-
 export const usersApi = {
   list: () => api<UserRow[]>('GET', '/api/users'),
-  create: (username: string, display_name: string, role: Role) =>
-    api<TemporaryPassword>('POST', '/api/users', { username, display_name, role }),
+  create: (username: string, display_name: string, role: Role, password: string, confirm_password: string) =>
+    api<UserRow>('POST', '/api/users', { username, display_name, role, password, confirm_password }),
   update: (id: number, body: { display_name?: string; role?: Role }) => api<UserRow>('PATCH', `/api/users/${id}`, body),
   disable: (id: number) => api<UserRow>('POST', `/api/users/${id}/disable`),
   enable: (id: number) => api<UserRow>('POST', `/api/users/${id}/enable`),
-  resetPassword: (id: number) => api<TemporaryPassword>('POST', `/api/users/${id}/reset-password`),
+  resetPassword: (id: number, password: string, confirm_password: string) =>
+    api<UserRow>('POST', `/api/users/${id}/reset-password`, { password, confirm_password }),
   unlock: (id: number) => api<UserRow>('POST', `/api/users/${id}/unlock`),
 };
 

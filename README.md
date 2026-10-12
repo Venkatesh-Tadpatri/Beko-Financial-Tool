@@ -44,6 +44,11 @@ npm run dev
 This compiles the Electron main process, starts the renderer dev server with hot reload,
 opens the application window and starts the Python data service.
 
+* A new installation has one built-in Super Admin: `admin@beko-technologies.com`. Its starting
+  password is handed over separately (it is not written in this repository). The first sign-in
+  must choose a new password before anything else can be used.
+* Any user can change their password from the sign-in screen ("Change password") or, when
+  signed in, from the panel at the bottom of the menu.
 * Development data is kept in `%APPDATA%\FinancialVisualizationTool-dev`, separate from a
   real installation. To start again from a fresh first run, close the app and delete that folder.
 * To use another folder: `$env:FVT_DATA_DIR = "C:\temp\fvt-test"; npm run dev`

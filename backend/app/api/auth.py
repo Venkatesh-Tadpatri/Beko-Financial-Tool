@@ -30,6 +30,7 @@ from app.core.security import (
 )
 from app.models import Role, User, UserSession
 from app.schemas.auth import (
+    ChangePasswordAtLoginRequest,
     ChangePasswordRequest,
     LoginRequest,
     LoginResponse,
@@ -103,47 +104,66 @@ def setup_super_admin(body: SetupRequest, db: Session = Depends(get_db)) -> User
 # ------------------------------------------------------------------ login / logout
 
 
-@router.post("/auth/login", response_model=LoginResponse)
-def login(body: LoginRequest, state: AppState = Depends(get_state)) -> LoginResponse:
+def _check_credentials(db: Session, settings, username: str, password: str) -> tuple[User | None, HTTPException | None]:
+    """Shared by sign-in and change-password-at-sign-in: same lockout, same generic errors, same audit."""
+    now = clock.now()
+    user = db.scalar(select(User).where(User.username == username))
+    if user is not None and user.locked_until is not None and user.locked_until > now:
+        minutes = max(1, int((user.locked_until - now).total_seconds() // 60) + 1)
+        audit.record(db, "login_blocked", user=user, details={"reason": "locked"})
+        return None, HTTPException(status.HTTP_423_LOCKED, detail={
+            "code": "account_locked",
+            "message": f"Too many failed attempts. Try again in {minutes} minute{'s' if minutes > 1 else ''}."})
+    if not verify_password(user.password_hash if user else None, password):
+        if user is None:
+            audit.record(db, "login_failed", username=username[:64], details={"reason": "unknown_user"})
+        else:
+            user.failed_attempts += 1
+            if user.failed_attempts >= settings.lockout_threshold:
+                user.locked_until = now + timedelta(minutes=settings.lockout_minutes)
+                user.failed_attempts = 0
+                audit.record(db, "account_locked", user=user, details={"minutes": settings.lockout_minutes})
+            else:
+                audit.record(db, "login_failed", user=user,
+                             details={"reason": "bad_password", "attempt": user.failed_attempts})
+        return None, HTTPException(status.HTTP_401_UNAUTHORIZED,
+                                   detail={"code": "invalid_credentials", "message": GENERIC_LOGIN_ERROR})
+    if not user.is_active:
+        audit.record(db, "login_failed", user=user, details={"reason": "disabled"})
+        return None, HTTPException(status.HTTP_401_UNAUTHORIZED,
+                                   detail={"code": "invalid_credentials", "message": GENERIC_LOGIN_ERROR})
+    user.failed_attempts = 0
+    user.locked_until = None
+    return user, None
+
+
+def _require_ready(state: AppState) -> None:
     if state.mode != Mode.READY or state.session_factory is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail={"code": "not_ready", "mode": state.mode.value})
+
+
+def _new_password_error(username: str, current: str, new: str, confirm: str) -> HTTPException | None:
+    if new != confirm:
+        return _bad_request("password_mismatch", "The new passwords do not match.")
+    if new == current:
+        return _bad_request("password_reused", "The new password must be different from the current one.")
+    if problems := password_problems(new, username):
+        return _policy_error(problems)
+    return None
+
+
+@router.post("/auth/login", response_model=LoginResponse)
+def login(body: LoginRequest, state: AppState = Depends(get_state)) -> LoginResponse:
+    _require_ready(state)
     settings = state.settings
-    username = body.username.strip()
     # Failed attempts must be committed even though the request fails, so this
     # route manages its own transaction and raises only after it commits.
     error: HTTPException | None = None
     result: LoginResponse | None = None
     with transaction(state.session_factory) as db:
         now = clock.now()
-        user = db.scalar(select(User).where(User.username == username))
-        if user is not None and user.locked_until is not None and user.locked_until > now:
-            minutes = max(1, int((user.locked_until - now).total_seconds() // 60) + 1)
-            audit.record(db, "login_blocked", user=user, details={"reason": "locked"})
-            error = HTTPException(status.HTTP_423_LOCKED, detail={
-                "code": "account_locked",
-                "message": f"Too many failed attempts. Try again in {minutes} minute{'s' if minutes > 1 else ''}."})
-        elif not verify_password(user.password_hash if user else None, body.password):
-            if user is None:
-                audit.record(db, "login_failed", username=username[:64], details={"reason": "unknown_user"})
-            else:
-                user.failed_attempts += 1
-                if user.failed_attempts >= settings.lockout_threshold:
-                    user.locked_until = now + timedelta(minutes=settings.lockout_minutes)
-                    user.failed_attempts = 0
-                    audit.record(db, "account_locked", user=user,
-                                 details={"minutes": settings.lockout_minutes})
-                else:
-                    audit.record(db, "login_failed", user=user,
-                                 details={"reason": "bad_password", "attempt": user.failed_attempts})
-            error = HTTPException(status.HTTP_401_UNAUTHORIZED,
-                                  detail={"code": "invalid_credentials", "message": GENERIC_LOGIN_ERROR})
-        elif not user.is_active:
-            audit.record(db, "login_failed", user=user, details={"reason": "disabled"})
-            error = HTTPException(status.HTTP_401_UNAUTHORIZED,
-                                  detail={"code": "invalid_credentials", "message": GENERIC_LOGIN_ERROR})
-        else:
-            user.failed_attempts = 0
-            user.locked_until = None
+        user, error = _check_credentials(db, settings, body.username.strip(), body.password)
+        if user is not None:
             user.last_login_at = now
             if needs_rehash(user.password_hash):
                 user.password_hash = hash_password(body.password)
@@ -158,6 +178,34 @@ def login(body: LoginRequest, state: AppState = Depends(get_state)) -> LoginResp
         raise error
     assert result is not None
     return result
+
+
+@router.post("/auth/change-password-at-login", status_code=status.HTTP_204_NO_CONTENT)
+def change_password_at_login(body: ChangePasswordAtLoginRequest, state: AppState = Depends(get_state)) -> None:
+    """Change a password from the sign-in screen with username + current password.
+
+    Wrong credentials count towards the same 5-attempt lockout as sign-in. On
+    success every session of the user is signed out; they then sign in normally.
+    """
+    _require_ready(state)
+    error: HTTPException | None = None
+    with transaction(state.session_factory) as db:
+        username = body.username.strip()
+        user, error = _check_credentials(db, state.settings, username, body.current_password)
+        if user is not None:
+            error = _new_password_error(user.username, body.current_password, body.new_password, body.confirm_password)
+            if error is None:
+                now = clock.now()
+                user.password_hash = hash_password(body.new_password)
+                user.must_change_password = False
+                user.password_changed_at = now
+                for s in db.scalars(select(UserSession).where(UserSession.user_id == user.id,
+                                                              UserSession.revoked_at.is_(None))):
+                    s.revoked_at, s.revoke_reason = now, "password_changed"
+                audit.record(db, "password_changed", user=user, entity_type="user", entity_id=user.id,
+                             details={"from": "sign_in_screen"})
+    if error is not None:
+        raise error
 
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -185,12 +233,8 @@ def change_password(body: ChangePasswordRequest, request: Request,
     user = p.user
     if not verify_password(user.password_hash, body.current_password):
         raise _bad_request("wrong_password", "Your current password is not correct.")
-    if body.new_password != body.confirm_password:
-        raise _bad_request("password_mismatch", "The new passwords do not match.")
-    if body.new_password == body.current_password:
-        raise _bad_request("password_reused", "The new password must be different from the current one.")
-    if problems := password_problems(body.new_password, user.username):
-        raise _policy_error(problems)
+    if error := _new_password_error(user.username, body.current_password, body.new_password, body.confirm_password):
+        raise error
     now = clock.now()
     user.password_hash = hash_password(body.new_password)
     user.must_change_password = False

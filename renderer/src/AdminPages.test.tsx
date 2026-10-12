@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from './App';
 import { AuthProvider } from './auth/AuthContext';
-import { FakeBackend, TEMP_PASSWORD } from './test/fakeBackend';
+import { FakeBackend, START_PASSWORD } from './test/fakeBackend';
 
 const GOOD = 'Str0ng!Passw0rd';
 let backend: FakeBackend;
@@ -39,22 +39,27 @@ describe('Users', () => {
     expect(within(row).getByRole('button', { name: 'Disable' })).toBeDisabled();
   });
 
-  it('adds a user and shows the temporary password once', async () => {
+  it('adds a user with a starting password the admin types', async () => {
     const user = await openAs('Users');
     await user.click(await screen.findByRole('button', { name: 'Add user' }));
     const dialog = screen.getByRole('dialog', { name: 'Add user' });
-    await user.type(within(dialog).getByLabelText('Username'), 'priya');
+    const create = within(dialog).getByRole('button', { name: 'Create user' });
+    await user.type(within(dialog).getByLabelText('Username'), 'priya@beko-technologies.com');
     await user.type(within(dialog).getByLabelText('Full name'), 'Priya Sharma');
     await user.selectOptions(within(dialog).getByLabelText('Role'), 'editor');
     expect(within(dialog).getByText(/upload Excel files/)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole('button', { name: 'Create user' }));
-
-    const done = await screen.findByRole('dialog', { name: 'User created' });
-    expect(within(done).getByLabelText('Temporary password')).toHaveTextContent(TEMP_PASSWORD);
-    expect(within(done).getByText(/shown only once/)).toBeInTheDocument();
-    await user.click(within(done).getByRole('button', { name: 'Done' }));
+    await user.type(within(dialog).getByLabelText('Starting password'), 'weak');
+    expect(create).toBeDisabled();
+    await user.clear(within(dialog).getByLabelText('Starting password'));
+    await user.type(within(dialog).getByLabelText('Starting password'), START_PASSWORD);
+    await user.type(within(dialog).getByLabelText('Confirm starting password'), START_PASSWORD);
+    expect(create).toBeEnabled();
+    await user.click(create);
+    expect(await screen.findByText(/has been created. Give them the starting password/)).toBeInTheDocument();
     expect(await screen.findByText('Priya Sharma')).toBeInTheDocument();
-    expect(screen.queryByText(TEMP_PASSWORD)).not.toBeInTheDocument();
+    const created = backend.users.find((u) => u.user.username === 'priya@beko-technologies.com')!;
+    expect(created.password).toBe(START_PASSWORD);
+    expect(created.user.must_change_password).toBe(true);
   });
 
   it('shows a clear error for a duplicate username', async () => {
@@ -62,19 +67,24 @@ describe('Users', () => {
     await user.click(await screen.findByRole('button', { name: 'Add user' }));
     const dialog = screen.getByRole('dialog', { name: 'Add user' });
     await user.type(within(dialog).getByLabelText('Username'), 'FOUNDER');
+    await user.type(within(dialog).getByLabelText('Starting password'), START_PASSWORD);
+    await user.type(within(dialog).getByLabelText('Confirm starting password'), START_PASSWORD);
     await user.click(within(dialog).getByRole('button', { name: 'Create user' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('already in use');
   });
 
-  it('resets a password after confirmation', async () => {
+  it('resets a password to one the admin types', async () => {
     backend.addUser('ravi', GOOD, 'editor');
     const user = await openAs('Users');
     const row = (await screen.findByText('ravi', { selector: 'div.text-xs' })).closest('tr')!;
     await user.click(within(row).getByRole('button', { name: 'Reset password' }));
-    const confirm = screen.getByRole('dialog', { name: 'Reset password' });
-    expect(within(confirm).getByText(/will be signed out/)).toBeInTheDocument();
-    await user.click(within(confirm).getByRole('button', { name: 'Reset password' }));
-    expect(await screen.findByRole('dialog', { name: 'Password reset' })).toHaveTextContent(TEMP_PASSWORD);
+    const dialog = screen.getByRole('dialog', { name: 'Reset password' });
+    expect(within(dialog).getByText(/will be signed out/)).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('New starting password'), START_PASSWORD);
+    await user.type(within(dialog).getByLabelText('Confirm new starting password'), START_PASSWORD);
+    await user.click(within(dialog).getByRole('button', { name: 'Reset password' }));
+    expect(await screen.findByText(/The password for ravi has been reset/)).toBeInTheDocument();
+    expect(backend.users[1].password).toBe(START_PASSWORD);
     expect(backend.users[1].user.must_change_password).toBe(true);
   });
 

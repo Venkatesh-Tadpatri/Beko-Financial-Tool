@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import text
 
 GOOD = "Str0ng!Passw0rd"
+START = "Start!Pass2026x"  # what an admin types when creating a user
 ROLES = ("viewer", "editor", "approver", "admin", "super_admin")
 
 
@@ -25,12 +26,13 @@ def login(client, username, password=GOOD) -> str:
 
 def make_user(client, admin_token: str, username: str, role: str, password: str = GOOD) -> tuple[int, str]:
     """Create a user through the API, then set their own password. Returns (id, token)."""
-    r = client.post("/api/users", headers=auth(admin_token), json={"username": username, "role": role})
+    r = client.post("/api/users", headers=auth(admin_token),
+                    json={"username": username, "role": role, "password": START, "confirm_password": START})
     assert r.status_code == 201, r.text
-    uid, temp = r.json()["user"]["id"], r.json()["temporary_password"]
-    token = login(client, username, temp)
+    uid = r.json()["id"]
+    token = login(client, username, START)
     r = client.post("/api/auth/change-password", headers=auth(token),
-                    json={"current_password": temp, "new_password": password, "confirm_password": password})
+                    json={"current_password": START, "new_password": password, "confirm_password": password})
     assert r.status_code == 204, r.text
     return uid, token
 

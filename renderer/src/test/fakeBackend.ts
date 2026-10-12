@@ -19,7 +19,7 @@ interface FakeUser {
   locked: boolean;
 }
 
-export const TEMP_PASSWORD = 'Temp!Pass2345x';
+export const START_PASSWORD = 'Start!Pass2026x';
 
 /** In-memory stand-in for the Electron bridge + backend, with just enough behaviour for UI tests. */
 export class FakeBackend {
@@ -120,10 +120,11 @@ export class FakeBackend {
           u.locked = false;
           return this.ok(this.row(u));
         case 'POST reset-password':
-          u.password = TEMP_PASSWORD;
+          if (body.password !== body.confirm_password) return this.err(400, 'password_mismatch', 'The passwords do not match.');
+          u.password = body.password;
           u.locked = false;
           u.user = { ...u.user, must_change_password: true };
-          return this.ok({ user: this.row(u), temporary_password: TEMP_PASSWORD });
+          return this.ok(this.row(u));
       }
     }
     if (backupMatch) {
@@ -164,6 +165,16 @@ export class FakeBackend {
         return this.ok(null, 204);
       case 'POST /api/auth/heartbeat':
         return this.signedIn ? this.ok(null, 204) : this.err(401, 'not_authenticated', 'Please sign in.');
+      case 'POST /api/auth/change-password-at-login': {
+        const u = this.users.find((x) => x.user.username.toLowerCase() === body.username.toLowerCase());
+        if (!u || u.password !== body.current_password) {
+          this.failures += 1;
+          return this.err(401, 'invalid_credentials', 'Invalid username or password.');
+        }
+        u.password = body.new_password;
+        u.user = { ...u.user, must_change_password: false };
+        return this.ok(null, 204);
+      }
       case 'POST /api/auth/change-password':
         if (!this.signedIn) return this.err(401, 'not_authenticated', 'Please sign in.');
         if (body.current_password !== this.signedIn.password) return this.err(400, 'wrong_password', 'Your current password is not correct.');
@@ -176,9 +187,9 @@ export class FakeBackend {
       case 'POST /api/users': {
         if (this.users.some((u) => u.user.username.toLowerCase() === body.username.toLowerCase()))
           return this.err(409, 'username_taken', `The username "${body.username}" is already in use.`);
-        const u = this.addUser(body.username, TEMP_PASSWORD, body.role as User['role'], true);
+        const u = this.addUser(body.username, body.password, body.role as User['role'], true);
         u.user.display_name = body.display_name || body.username;
-        return this.ok({ user: this.row(u), temporary_password: TEMP_PASSWORD }, 201);
+        return this.ok(this.row(u), 201);
       }
 
       case 'GET /api/audit':
