@@ -1,0 +1,44 @@
+# Windows installer (NSIS). Build with installer\build.ps1, which builds the backend and screens first.
+appId: com.beko.financialvisualizationtool
+productName: Financial Visualization Tool
+copyright: Copyright © 2026 BEKO Technologies
+
+directories:
+  output: installer/out
+  buildResources: installer
+
+files:
+  - package.json
+  - desktop/dist/**/*
+  - "!desktop/dist/**/*.map"
+  - renderer/dist/**/*
+
+# The packaged Python data service (from PyInstaller), next to the app.
+extraResources:
+  - from: backend/dist/fvt-backend
+    to: backend
+    filter: ["**/*"]
+
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: installer/icon.png
+  executableName: FinancialVisualizationTool
+
+nsis:
+  oneClick: false # full wizard: welcome, licence, folder, shortcuts, progress, finish
+  perMachine: true # Program Files; registers in Apps & features
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  license: installer/license.txt
+  createDesktopShortcut: false # chosen by the user on our own page (installer.nsh)
+  createStartMenuShortcut: false
+  runAfterFinish: true # "Run Financial Visualization Tool" on the finish page
+  deleteAppDataOnUninstall: false # data lives in %APPDATA%; only deleted after two confirmations
+  shortcutName: Financial Visualization Tool
+  uninstallDisplayName: Financial Visualization Tool
+  artifactName: FinancialVisualizationTool-Setup-${version}.exe
+  include: installer/nsis/installer.nsh

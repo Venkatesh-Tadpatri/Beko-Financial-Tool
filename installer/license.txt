@@ -1,0 +1,15 @@
+FINANCIAL VISUALIZATION TOOL - LICENCE AGREEMENT (DRAFT)
+
+IMPORTANT: This is placeholder text for the preview installer. Replace it with
+BEKO Technologies' approved licence terms before the software is delivered.
+
+1. This software is licensed, not sold, for internal use by the licensee.
+2. The licensee may install it on computers owned or controlled by the licensee.
+3. The software stores all data on the computer where it is installed. The
+   licensee is responsible for keeping backups in a safe place.
+4. The software is provided "as is", without warranty of any kind, to the
+   extent permitted by law.
+5. The software includes open-source components (Electron, Python, FastAPI,
+   SQLite and others) under their own licences.
+
+By clicking "I Agree" you accept these terms.
