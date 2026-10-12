@@ -183,6 +183,11 @@ async function boot(): Promise<void> {
   });
 }
 
+// Dev screenshot runs use their own profile so they can run next to an open copy of the app.
+if (isDev && process.env.FVT_SMOKE_SCREENSHOT) {
+  app.setPath('userData', path.join(app.getPath('temp'), `fvt-smoke-${process.pid}`));
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {

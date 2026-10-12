@@ -58,7 +58,7 @@ describe('first run', () => {
     expect(within(checklist).getByText(/Both passwords match/)).toHaveTextContent('(met)');
     await user.click(submit);
 
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome Back' })).toBeInTheDocument();
     expect(screen.getByText(/Super admin "founder" created/)).toBeInTheDocument();
     expect(backend.users[0].user.role).toBe('super_admin');
   });
@@ -87,7 +87,7 @@ describe('sign in', () => {
 
   it('shows the login screen and nothing else once set up', async () => {
     renderApp();
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome Back' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
   });
 
@@ -157,7 +157,7 @@ describe('sign in', () => {
     await act(async () => {
       await authApi.heartbeat().catch(() => undefined);
     });
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome Back' })).toBeInTheDocument();
     expect(screen.getByText(/15 minutes of inactivity/)).toBeInTheDocument();
   });
 });
