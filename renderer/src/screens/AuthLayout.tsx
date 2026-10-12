@@ -105,7 +105,7 @@ function BrandPanel() {
 /** Illustrative dashboard on a laptop. Figures are decorative, not real data. */
 const LAPTOP_W = 660;
 const BOTTOM_GAP = 28; // keep the whole laptop, base included, inside the panel
-const TILT_ALLOWANCE = 1.12; // the 3D tilt makes the drawn laptop a little taller than its box
+const BASE_OVERHANG = 1.14; // the base is 7% wider than the lid on each side
 
 /** Scales the fixed-size illustration to whatever space is left under the feature tiles. */
 function useFitScale() {
@@ -117,8 +117,8 @@ function useFitScale() {
     if (!laptop || !el || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(() => {
       const { width, height } = el.getBoundingClientRect();
-      const naturalH = laptop.offsetHeight * TILT_ALLOWANCE; // offset sizes ignore transforms
-      const naturalW = laptop.offsetWidth;
+      const naturalH = laptop.offsetHeight; // offset sizes ignore the scale transform
+      const naturalW = laptop.offsetWidth * BASE_OVERHANG;
       setScale(Math.max(0.3, Math.min(1.15, (height - BOTTOM_GAP) / naturalH, (width * 0.9) / naturalW)));
     });
     ro.observe(el);
@@ -140,14 +140,13 @@ function Laptop() {
   return (
     <div
       ref={ref}
-      className="pointer-events-none absolute left-[2%] origin-bottom-left"
-      style={{
-        bottom: BOTTOM_GAP,
-        width: LAPTOP_W,
-        transform: `scale(${scale}) perspective(1600px) rotateY(-14deg) rotateX(6deg) rotateZ(-3deg)`,
-      }}
+      className="pointer-events-none absolute left-[6%] origin-bottom-left"
+      style={{ bottom: BOTTOM_GAP, width: LAPTOP_W, transform: `scale(${scale})` }}
     >
-      <div className="rounded-t-[18px] border-[10px] border-b-[14px] border-[#11131c] bg-[#0c1530] p-4 shadow-[0_40px_80px_rgba(0,0,0,0.5)]">
+      {/* lid: even bezel with a camera, screen inside */}
+      <div className="relative rounded-[16px] bg-gradient-to-b from-[#24262f] to-[#15161d] px-[11px] pb-[12px] pt-[16px] shadow-[0_30px_60px_rgba(0,0,0,0.45)] ring-1 ring-white/10">
+        <span className="absolute left-1/2 top-[6px] h-[5px] w-[5px] -translate-x-1/2 rounded-full bg-[#3a3d4a]" />
+      <div className="rounded-[6px] bg-[#0c1530] p-4">
         <div className="grid grid-cols-4 gap-3">
           {kpis.map((k) => (
             <div key={k.t} className="rounded-lg bg-[#16224a] p-3">
@@ -208,7 +207,12 @@ function Laptop() {
           </div>
         </div>
       </div>
-      <div className="mx-[-4%] h-[14px] rounded-b-[14px] bg-gradient-to-b from-[#c9ced8] to-[#8d93a0]" />
+      </div>
+      {/* hinge and base (slightly wider than the lid), with the finger notch */}
+      <div className="mx-[3%] h-[5px] rounded-b-[3px] bg-[#2b2e38]" />
+      <div className="relative -mx-[7%] h-[16px] rounded-b-[22px] rounded-t-[3px] bg-gradient-to-b from-[#e3e6ec] via-[#c3c8d1] to-[#8e94a0] shadow-[0_14px_24px_rgba(0,0,0,0.4)]">
+        <span className="absolute left-1/2 top-0 h-[6px] w-[17%] -translate-x-1/2 rounded-b-[8px] bg-gradient-to-b from-[#9ba1ad] to-[#b9bec8]" />
+      </div>
     </div>
   );
 }
