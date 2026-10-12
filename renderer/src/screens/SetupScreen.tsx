@@ -15,7 +15,7 @@ export function SetupScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const usernameValid = /^[A-Za-z0-9._-]{3,64}$/.test(username.trim());
+  const usernameValid = /^[A-Za-z0-9._@-]{3,64}$/.test(username.trim());
   const canSubmit = usernameValid && passwordOk(password, username) && password === confirm;
 
   async function submit(e: FormEvent) {
@@ -46,8 +46,8 @@ export function SetupScreen() {
           autoFocus
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          hint="3–64 characters: letters, digits, dot, underscore or hyphen."
-          error={username && !usernameValid ? 'Use 3–64 letters, digits, dot, underscore or hyphen.' : null}
+          hint="3–64 characters. An email address works, or letters, digits, dot, underscore or hyphen."
+          error={username && !usernameValid ? 'Use 3–64 characters: letters, digits, @, dot, underscore or hyphen (no spaces).' : null}
         />
         <Field label="Full name (optional)" autoComplete="off" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         <Field label="Password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />

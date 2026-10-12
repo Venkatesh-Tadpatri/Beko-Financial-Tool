@@ -104,6 +104,12 @@ def test_setup_rejects_mismatch_and_bad_username(client):
     assert r.json()["detail"]["code"] == "invalid_username"
 
 
+def test_email_address_works_as_username(client):
+    r = client.post("/api/setup/super-admin", json={**ADMIN, "username": "admin@beko-technologies.com"})
+    assert r.status_code == 201, r.text
+    assert login(client, username="Admin@Beko-Technologies.com").status_code == 200
+
+
 def test_setup_works_once_only(client):
     user = setup_admin(client)
     assert user["role"] == "super_admin" and "manage_users" in user["permissions"]

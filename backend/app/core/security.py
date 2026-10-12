@@ -22,7 +22,7 @@ _DUMMY_HASH = _hasher.hash(secrets.token_urlsafe(16))
 
 MIN_LENGTH = 10
 MAX_LENGTH = 128
-USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{3,64}$")
+USERNAME_RE = re.compile(r"^[A-Za-z0-9._@-]{3,64}$")
 
 
 def hash_password(password: str) -> str:
@@ -62,7 +62,7 @@ def password_problems(password: str, username: str = "") -> list[str]:
 
 def username_problem(username: str) -> str | None:
     if not USERNAME_RE.match(username):
-        return "Username must be 3-64 characters: letters, digits, dot, underscore or hyphen."
+        return "Username must be 3-64 characters: letters, digits, @, dot, underscore or hyphen (an email address works)."
     return None
 
 

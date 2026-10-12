@@ -188,7 +188,7 @@ function UserDialog({ user, onClose, onSaved }: { user?: UserRow; onClose: () =>
     >
       <form id="user-form" onSubmit={submit} className="space-y-4">
         {error && <Alert kind="error">{error}</Alert>}
-        {!user && <Field label="Username" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" hint="Letters, digits, dot, underscore or hyphen." />}
+        {!user && <Field label="Username" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" hint="An email address, or letters, digits, dot, underscore or hyphen." />}
         <Field label="Full name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
         <Select label="Role" value={role} onChange={(e) => setRole(e.target.value as Role)} disabled={user?.is_founder}>
           {ROLES.map((r) => (

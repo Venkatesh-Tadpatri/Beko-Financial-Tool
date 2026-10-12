@@ -63,6 +63,16 @@ describe('first run', () => {
     expect(backend.users[0].user.role).toBe('super_admin');
   });
 
+  it('accepts an email address as the username', async () => {
+    const user = userEvent.setup({ delay: null });
+    renderApp();
+    await user.type(await screen.findByLabelText('Username'), 'admin@beko-technologies.com');
+    await user.type(screen.getByLabelText('Password'), GOOD);
+    await user.type(screen.getByLabelText('Confirm password'), GOOD);
+    expect(screen.queryByText(/no spaces/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create Super Admin' })).toBeEnabled();
+  });
+
   it('flags a password that contains the username', async () => {
     const user = userEvent.setup({ delay: null });
     renderApp();
