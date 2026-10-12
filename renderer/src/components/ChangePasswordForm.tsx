@@ -41,7 +41,7 @@ export function ChangePasswordForm({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit || busy) return; // a second Enter/click while the first change is running must not resend
     setBusy(true);
     setError(null);
     try {
