@@ -104,18 +104,22 @@ function BrandPanel() {
 
 /** Illustrative dashboard on a laptop. Figures are decorative, not real data. */
 const LAPTOP_W = 660;
-const LAPTOP_H = 400;
+const BOTTOM_GAP = 28; // keep the whole laptop, base included, inside the panel
+const TILT_ALLOWANCE = 1.12; // the 3D tilt makes the drawn laptop a little taller than its box
 
 /** Scales the fixed-size illustration to whatever space is left under the feature tiles. */
 function useFitScale() {
   const ref = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   useEffect(() => {
-    const el = ref.current?.parentElement;
-    if (!el || typeof ResizeObserver === 'undefined') return;
+    const laptop = ref.current;
+    const el = laptop?.parentElement;
+    if (!laptop || !el || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(() => {
       const { width, height } = el.getBoundingClientRect();
-      setScale(Math.max(0.35, Math.min(1.25, height / LAPTOP_H, (width * 0.92) / LAPTOP_W)));
+      const naturalH = laptop.offsetHeight * TILT_ALLOWANCE; // offset sizes ignore transforms
+      const naturalW = laptop.offsetWidth;
+      setScale(Math.max(0.3, Math.min(1.15, (height - BOTTOM_GAP) / naturalH, (width * 0.9) / naturalW)));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -136,8 +140,12 @@ function Laptop() {
   return (
     <div
       ref={ref}
-      className="pointer-events-none absolute bottom-[-10px] left-[2%] origin-bottom-left"
-      style={{ width: LAPTOP_W, transform: `scale(${scale}) perspective(1600px) rotateY(-14deg) rotateX(6deg) rotateZ(-3deg)` }}
+      className="pointer-events-none absolute left-[2%] origin-bottom-left"
+      style={{
+        bottom: BOTTOM_GAP,
+        width: LAPTOP_W,
+        transform: `scale(${scale}) perspective(1600px) rotateY(-14deg) rotateX(6deg) rotateZ(-3deg)`,
+      }}
     >
       <div className="rounded-t-[18px] border-[10px] border-b-[14px] border-[#11131c] bg-[#0c1530] p-4 shadow-[0_40px_80px_rgba(0,0,0,0.5)]">
         <div className="grid grid-cols-4 gap-3">
