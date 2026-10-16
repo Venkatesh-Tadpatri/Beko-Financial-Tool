@@ -133,7 +133,7 @@ export class FakeData {
       if (sub === 'POST validate') return this.ok({ summary: this.validate(id) });
       if (sub === 'POST submit') {
         if (!(b.summary as { can_submit?: boolean }).can_submit) return this.err(409, 'has_errors', 'Rows still have errors.');
-        Object.assign(b, { status: 'submitted', current_level: 1, submitted_at: '2026-10-10T10:30:00+00:00' });
+        Object.assign(b, { status: 'approved', current_level: 0, submitted_at: '2026-10-10T10:30:00+00:00', decided_at: '2026-10-10T10:30:00+00:00' });
         return this.ok({ ...b, backup_warning: null });
       }
       if (sub === 'GET facts')

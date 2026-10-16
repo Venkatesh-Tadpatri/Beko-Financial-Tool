@@ -191,7 +191,7 @@ describe('Viewer', () => {
   it('cannot open admin pages by address', async () => {
     window.location.hash = '#/backups';
     await openAs('Dashboard', 'viewer');
-    expect(await screen.findByText(/Welcome, val/)).toBeInTheDocument();
+    expect(await screen.findByText(/Executive Dashboard/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Back up now' })).not.toBeInTheDocument();
     expect(backend.calls.some((c) => c.path.startsWith('/api/backups'))).toBe(false);
   });

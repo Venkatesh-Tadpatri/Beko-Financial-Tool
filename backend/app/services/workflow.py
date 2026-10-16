@@ -73,6 +73,8 @@ def check_mapping(ds, grain: str, headers: list[str], column_map: dict[str, str]
     required = [f for f in ds.dimensions + ds.values if f.required and f.key not in column_map]
     if required:
         raise WorkflowError("bad_mapping", "Map the required fields: " + ", ".join(f.label for f in required) + ".", 400)
+    if ds.key == "sales" and "material_code" not in column_map and "product_name" not in column_map:
+        raise WorkflowError("bad_mapping", "Map either SAP material code or Product name.", 400)
     if "period_date" not in column_map:
         if "fiscal_year" not in column_map or (grain != "Y" and "period_no" not in column_map):
             raise WorkflowError("bad_mapping", "Map a date column, or the financial year and period columns.", 400)
@@ -195,14 +197,20 @@ def edit_row(db: Session, batch: UploadBatch, row_no: int, values: dict | None, 
 
 
 def submit(db: Session, batch: UploadBatch) -> dict:
-    if batch.status != "draft":
-        raise WorkflowError("not_draft", "Only drafts can be submitted.")
+    """Validate and immediately make an upload live.
+
+    ``submitted`` is accepted for databases created by older releases, where
+    uploads could be left waiting in the now-disabled approval workflow.
+    """
+    if batch.status not in ("draft", "submitted"):
+        raise WorkflowError("not_draft", "Only new uploads can be imported.")
     summary = revalidate(db, batch)
     if not summary["can_submit"]:
         raise WorkflowError("has_errors", f"{summary['error_rows']} row(s) still have errors. Fix or exclude them first.")
-    batch.status = "submitted"
-    batch.current_level = 1
-    batch.submitted_at = clock.now()
+    if batch.submitted_at is None:
+        batch.submitted_at = clock.now()
+    batch.current_level = 0
+    finalize(db, batch)
     return summary
 
 
@@ -319,10 +327,18 @@ def _load_facts(db: Session, batch: UploadBatch, ds, parsed: list[tuple[int, Par
         model = SalesFact
         for row_no, p in parsed:
             rows.append({**common, "staging_row_no": row_no, "fy": p.fy, "period_no": p.period_no,
-                         "customer_code": p.dims["customer_code"], "material_code": p.dims["material_code"],
+                         "customer_code": p.dims["customer_code"], "material_code": p.dims.get("material_code"),
                          "oem_id": p.refs.get("oem_id"), "product_id": p.refs.get("product_id"),
                          "segment_id": p.refs.get("segment_id"), "division_id": p.refs.get("division_id"),
-                         "quantity": p.values.get("quantity"), "amount_paise": p.values["amount"]})
+                         "quantity": p.values.get("quantity"), "amount_paise": p.values["amount"],
+                         "billing_document": p.dims.get("billing_document"),
+                         "consignee_code": p.dims.get("consignee_code"), "consignee_name": p.dims.get("consignee_name"),
+                         "hsn_sac_code": p.dims.get("hsn_sac_code"), "unit": p.dims.get("unit"),
+                         "region": p.dims.get("region"), "basic_price_paise": p.values.get("basic_price"),
+                         "sales_order": p.dims.get("sales_order"), "sales_order_item": p.dims.get("sales_order_item"),
+                         "sales_order_date": p.dims.get("sales_order_date"), "payer_name": p.dims.get("payer_name"),
+                         "sales_channel": p.dims.get("sales_channel"), "division_code_raw": p.dims.get("division_code"),
+                         "product_name": p.dims.get("product_name"), "sales_employee": p.dims.get("sales_employee")})
     elif ds.fact_table == "receivable":
         model = ReceivableFact
         for row_no, p in parsed:

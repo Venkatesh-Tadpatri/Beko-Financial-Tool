@@ -13,11 +13,14 @@ import sqlite3
 from pathlib import Path
 
 from alembic.script import ScriptDirectory
+from sqlalchemy import select
 
 from app.core.db import integrity_check, make_engine, make_session_factory
 from app.services import local_config, migrations
 from app.services.backup import BackupService, _checkpoint_and_close, sqlite_copy
 from app.services.bootstrap import ensure_default_admin
+from app.models import UploadBatch, User
+from app.services import audit, workflow
 from app.services.permissions import restrict_to_current_user
 from app.state import AppState, Mode
 
@@ -35,6 +38,29 @@ MSG_NEWER = (
     "This database was created by a newer version of the application. "
     "Install the newer version to open it. No data has been changed."
 )
+
+
+def _publish_legacy_pending(state: AppState) -> None:
+    """Publish valid uploads left waiting by the retired approval workflow."""
+    if state.session_factory is None:
+        return
+    with state.session_factory() as db:
+        pending_ids = list(db.scalars(select(UploadBatch.id).where(UploadBatch.status == "submitted")))
+    for batch_id in pending_ids:
+        try:
+            with state.session_factory.begin() as db:
+                batch = db.get(UploadBatch, batch_id)
+                if batch is None or batch.status != "submitted":
+                    continue
+                workflow.submit(db, batch)
+                uploader = db.get(User, batch.uploaded_by)
+                audit.record(db, "upload_published", user=uploader, entity_type="batch", entity_id=batch.id,
+                             details={"rows": batch.row_count, "dataset": batch.dataset_type,
+                                      "automatic": True, "legacy_pending": True})
+        except Exception:
+            # Keep an invalid old upload available for correction; it must not
+            # prevent the application from starting.
+            log.exception("could not publish legacy pending upload %s", batch_id)
 
 
 class StartupError(RuntimeError):
@@ -171,6 +197,7 @@ def run_startup(state: AppState) -> None:
     state.session_factory = make_session_factory(state.engine)
     if state.settings.bootstrap_admin:
         ensure_default_admin(state.session_factory)
+    _publish_legacy_pending(state)
     state.mode = Mode.READY
 
     try:

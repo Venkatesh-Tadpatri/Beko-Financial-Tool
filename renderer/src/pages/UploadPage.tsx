@@ -6,8 +6,8 @@ import { Alert, Button, Field } from '../components/ui';
 
 export const STATUS: Record<BatchStatus, { label: string; tone: 'gray' | 'blue' | 'green' | 'red' | 'amber' }> = {
   draft: { label: 'Draft', tone: 'gray' },
-  submitted: { label: 'Waiting for approval', tone: 'blue' },
-  approved: { label: 'Approved', tone: 'green' },
+  submitted: { label: 'Processing', tone: 'blue' },
+  approved: { label: 'Active', tone: 'green' },
   rejected: { label: 'Rejected', tone: 'red' },
   superseded: { label: 'Replaced', tone: 'amber' },
 };
@@ -15,8 +15,7 @@ export const STATUS: Record<BatchStatus, { label: string; tone: 'gray' | 'blue' 
 const FILTERS: { key: string; label: string }[] = [
   { key: '', label: 'All' },
   { key: 'draft', label: 'Drafts' },
-  { key: 'submitted', label: 'Waiting for approval' },
-  { key: 'approved', label: 'Approved' },
+  { key: 'approved', label: 'Active' },
   { key: 'rejected', label: 'Rejected' },
   { key: 'superseded', label: 'Replaced' },
 ];
@@ -45,6 +44,10 @@ export function UploadPage() {
     setBusy(true);
     try {
       const res = await importApi.upload(dataset, source.trim() || 'SAP', path);
+      if (res.batch.status === 'approved') {
+        navigate('/');
+        return;
+      }
       const dup = res.duplicate_of ? `&duplicate=${res.duplicate_of.id}` : '';
       navigate(`/upload/${res.batch.id}?new=1${dup}`);
     } catch (e) {
@@ -75,7 +78,7 @@ export function UploadPage() {
         </div>
         {info && (
           <p className="text-sm text-muted">
-            {info.label} data is {GRAIN_LABELS[info.period_grain].toLowerCase()}. A new upload replaces the periods it covers once it is approved; the
+            {info.label} data is {GRAIN_LABELS[info.period_grain].toLowerCase()}. A new import replaces the periods it covers as soon as it is published; the
             previous version is kept in the history. The original file is archived unchanged.
           </p>
         )}

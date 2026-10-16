@@ -96,7 +96,7 @@ export interface SheetPreview {
 export const importApi = {
   datasets: () => api<DatasetInfo[]>('GET', '/api/import/datasets'),
   upload: (dataset_type: string, source_name: string, path: string) =>
-    api<{ batch: Batch; sheets: string[]; duplicate_of: { id: number; status: string; created_at: string } | null }>('POST', '/api/import/upload', { dataset_type, source_name, path }),
+    api<{ batch: Batch; sheets: string[]; duplicate_of: { id: number; status: string; created_at: string } | null; auto_import_error: string | null }>('POST', '/api/import/upload', { dataset_type, source_name, path }),
   sheet: (id: number, sheet: string, header_row: number) =>
     api<SheetPreview>('GET', `/api/import/batches/${id}/sheet?${new URLSearchParams({ sheet, header_row: String(header_row) })}`),
   sheets: (id: number) => api<{ batch: Batch; sheets: string[] }>('GET', `/api/import/batches/${id}/sheets`),
@@ -119,6 +119,41 @@ export const importApi = {
     api<{ id: number; field: string; old_value: string; new_value: string; reason: string; username: string; ts: string; fact_id: number }[]>('GET', `/api/import/batches/${id}/overrides`),
   override: (body: { fact_table: string; fact_id: number; field: string; new_value: string; reason: string; password: string }) =>
     api<{ old_value: string; new_value: string }>('POST', '/api/overrides', body),
+};
+
+export interface SalesReportItem {
+  name: string;
+  amount_paise: number;
+  share: number;
+  units?: number;
+  average_unit_paise?: number;
+}
+
+export interface SalesReportPeriod {
+  fy: number;
+  period_no: number;
+  label: string;
+  amount_paise: number;
+  units: number;
+}
+
+export interface SalesSummary {
+  fy: number | null;
+  fy_label: string;
+  available_fys: number[];
+  total_paise: number;
+  total_units: number;
+  row_count: number;
+  billing_documents: number;
+  periods: SalesReportPeriod[];
+  products: SalesReportItem[];
+  channels: SalesReportItem[];
+  employees: SalesReportItem[];
+  customers: SalesReportItem[];
+}
+
+export const reportApi = {
+  salesSummary: (fy?: number) => api<SalesSummary>('GET', `/api/reports/sales-summary${fy === undefined ? '' : `?fy=${fy}`}`),
 };
 
 export const approvalsApi = {

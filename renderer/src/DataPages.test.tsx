@@ -47,7 +47,7 @@ describe('Upload wizard', () => {
 
     // Step 2: review
     expect(await screen.findByText('sales-apr.xlsx')).toBeInTheDocument();
-    const submit = await screen.findByRole('button', { name: 'Submit for approval' });
+    const submit = await screen.findByRole('button', { name: 'Import and show data' });
     expect(submit).toBeDisabled();
     expect(await screen.findByText(/C999" is not mapped to an OEM/)).toBeInTheDocument();
 
@@ -60,16 +60,16 @@ describe('Upload wizard', () => {
     await user.type(cust, 'C100');
     await user.click(within(dialog).getByRole('button', { name: 'Save and check' }));
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Submit for approval' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Import and show data' })).toBeEnabled());
     // the negative amount is a warning only; exclude it anyway
     await user.click(screen.getByRole('tab', { name: 'All rows' }));
     const negRow = (await screen.findByText(/is negative/)).closest('tr')!;
     await user.click(within(negRow).getByRole('button', { name: 'Exclude' }));
     await waitFor(() => expect(backend.data.rows[1].find((r) => r.row_no === 4)!.excluded).toBe(true));
 
-    await user.click(screen.getByRole('button', { name: 'Submit for approval' }));
-    expect(await screen.findByText('Submitted for approval.')).toBeInTheDocument();
-    expect(backend.data.batches[0].status).toBe('submitted');
+    await user.click(screen.getByRole('button', { name: 'Import and show data' }));
+    expect(await screen.findByText(/Imported successfully/)).toBeInTheDocument();
+    expect(backend.data.batches[0].status).toBe('approved');
   });
 });
 

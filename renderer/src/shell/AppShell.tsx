@@ -6,13 +6,15 @@ import { useIdleTimer } from '../auth/useIdleTimer';
 import { ChangePasswordForm } from '../components/ChangePasswordForm';
 import { Dialog } from '../components/kit';
 import { Alert, Button, Logo } from '../components/ui';
-import { ApprovalsPage } from '../pages/ApprovalsPage';
 import { AuditLogPage } from '../pages/AuditLogPage';
 import { BackupsPage } from '../pages/BackupsPage';
 import { BatchPage } from '../pages/BatchPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { MasterDataPage } from '../pages/MasterDataPage';
 import { NotBuiltYetPage } from '../pages/NotBuiltYetPage';
+import { TurnoverPage } from '../pages/TurnoverPage';
+import { RevenuePage } from '../pages/RevenuePage';
+import { ProductMixPage } from '../pages/ProductMixPage';
 import { UploadPage } from '../pages/UploadPage';
 import { UsersPage } from '../pages/UsersPage';
 import { NAV, ROLE_LABELS, type NavItem } from './nav';
@@ -95,10 +97,12 @@ export function AppShell() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             {[
+              { to: '/turnover', perm: 'view_reports', el: <TurnoverPage /> },
+              { to: '/revenue', perm: 'view_reports', el: <RevenuePage /> },
+              { to: '/product-mix', perm: 'view_reports', el: <ProductMixPage /> },
               { to: '/users', perm: 'manage_users', el: <UsersPage /> },
               { to: '/upload', perm: 'upload_data', el: <UploadPage /> },
               { to: '/upload/:id', perm: 'view_reports', el: <BatchPage /> },
-              { to: '/approvals', perm: 'approve_data', el: <ApprovalsPage /> },
               { to: '/master-data', perm: 'manage_master_data', el: <MasterDataPage /> },
               { to: '/backups', perm: 'manage_backups', el: <BackupsPage /> },
               { to: '/audit-log', perm: 'view_audit_log', el: <AuditLogPage /> },

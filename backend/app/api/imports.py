@@ -201,11 +201,13 @@ def upload(body: UploadRequest, p: Principal = Depends(can_upload), db: Session 
         raise _err(400, "bad_file", str(exc)) from exc
     template = db.scalar(select(ImportTemplate).where(ImportTemplate.dataset_type == body.dataset_type,
                                                       ImportTemplate.source_name == body.source_name.strip()))
+    archive = state.settings.paths.uploads_dir / rel
+    sheet = template.sheet_name if template and template.sheet_name in sheets else sheets[0]
+    header_row = template.header_row if template else importer.detect_header_row(archive, sheet, DATASETS[body.dataset_type])
     batch = UploadBatch(dataset_type=body.dataset_type, source_name=body.source_name.strip(),
                         period_grain=workflow.grain_for(db, body.dataset_type), original_filename=src.name[:255],
                         archived_path=rel, sha256=digest, uploaded_by=p.user.id, template_id=template.id if template else None,
-                        sheet_name=(template.sheet_name if template and template.sheet_name in sheets else sheets[0]),
-                        header_row=template.header_row if template else 1)
+                         sheet_name=sheet, header_row=header_row)
     db.add(batch)
     db.flush()
     earlier = db.scalars(select(UploadBatch).where(UploadBatch.sha256 == digest, UploadBatch.id != batch.id,
@@ -213,8 +215,26 @@ def upload(body: UploadRequest, p: Principal = Depends(can_upload), db: Session 
                                                    UploadBatch.status.in_(("submitted", "approved", "superseded")))).first()
     audit.record(db, "upload", user=p.user, entity_type="batch", entity_id=batch.id,
                  details={"dataset": body.dataset_type, "file": src.name, "sha256": digest})
+    # A valid workbook should become report data in this one action. Reuse a
+    # saved mapping when possible, otherwise use the detected column mapping.
+    # Files that need human correction remain drafts and open in the review UI.
+    auto_error = None
+    try:
+        headers = importer.preview(archive, sheet, header_row)["headers"]
+        saved_map = json.loads(template.column_map) if template else None
+        column_map = importer.suggest_mapping(headers, DATASETS[body.dataset_type], saved_map)
+        workflow.check_mapping(DATASETS[body.dataset_type], batch.period_grain, headers, column_map)
+        summary = workflow.stage(db, batch, archive, sheet, header_row, column_map)
+        workflow.save_template(db, batch, p.user)
+        if summary["can_submit"]:
+            workflow.submit(db, batch)
+            audit.record(db, "upload_published", user=p.user, entity_type="batch", entity_id=batch.id,
+                         details={"rows": batch.row_count, "dataset": batch.dataset_type, "automatic": True})
+    except (WorkflowError, importer.ImportError_) as exc:
+        auto_error = str(exc)
     return {"batch": batch_out(db, batch), "sheets": sheets,
-            "duplicate_of": {"id": earlier.id, "status": earlier.status, "created_at": earlier.created_at} if earlier else None}
+            "duplicate_of": {"id": earlier.id, "status": earlier.status, "created_at": earlier.created_at} if earlier else None,
+            "auto_import_error": auto_error}
 
 
 @router.get("/import/batches/{batch_id}/sheets")
@@ -334,7 +354,7 @@ def submit(batch_id: int, request: Request, state: AppState = Depends(get_state)
             workflow.submit(db, b)
         except WorkflowError as exc:
             raise _wf(exc) from exc
-        audit.record(db, "upload_submitted", user=p.user, entity_type="batch", entity_id=b.id,
+        audit.record(db, "upload_published", user=p.user, entity_type="batch", entity_id=b.id,
                      details={"rows": b.row_count, "dataset": b.dataset_type})
         out = batch_out(db, b, p.user)
     out["backup_warning"] = _backup_after(state, "upload")

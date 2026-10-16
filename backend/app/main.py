@@ -13,6 +13,7 @@ from app.api import auth as auth_api
 from app.api import backups as backups_api
 from app.api import imports as imports_api
 from app.api import master as master_api
+from app.api import reports as reports_api
 from app.api import users as users_api
 from app.core.appkey import AppKeyMiddleware
 from app.core.config import Settings
@@ -70,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(backups_api.recovery_router)
     app.include_router(master_api.router)
     app.include_router(imports_api.router)
+    app.include_router(reports_api.router)
 
     @app.get("/api/health")
     def health(request: Request) -> dict:

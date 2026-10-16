@@ -155,13 +155,28 @@ class SalesFact(FactMixin, Base):
     batch_id: Mapped[int] = mapped_column(ForeignKey("upload_batches.id"), index=True)
     staging_row_no: Mapped[int | None]
     customer_code: Mapped[str] = mapped_column(String(32, collation="NOCASE"))
-    material_code: Mapped[str] = mapped_column(String(40, collation="NOCASE"))
+    material_code: Mapped[str | None] = mapped_column(String(40, collation="NOCASE"))
     oem_id: Mapped[int | None] = mapped_column(ForeignKey("oems.id"), index=True)
     product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), index=True)
     segment_id: Mapped[int | None] = mapped_column(ForeignKey("segments.id"), index=True)
     division_id: Mapped[int | None] = mapped_column(ForeignKey("divisions.id"), index=True)
     quantity: Mapped[int | None]
     amount_paise: Mapped[int]
+    billing_document: Mapped[str | None] = mapped_column(String(32))
+    consignee_code: Mapped[str | None] = mapped_column(String(32))
+    consignee_name: Mapped[str | None] = mapped_column(String(255))
+    hsn_sac_code: Mapped[str | None] = mapped_column(String(32))
+    unit: Mapped[str | None] = mapped_column(String(16))
+    region: Mapped[str | None] = mapped_column(String(32))
+    basic_price_paise: Mapped[int | None]
+    sales_order: Mapped[str | None] = mapped_column(String(32))
+    sales_order_item: Mapped[str | None] = mapped_column(String(32))
+    sales_order_date: Mapped[str | None] = mapped_column(String(16))
+    payer_name: Mapped[str | None] = mapped_column(String(255))
+    sales_channel: Mapped[str | None] = mapped_column(String(64))
+    division_code_raw: Mapped[str | None] = mapped_column(String(32))
+    product_name: Mapped[str | None] = mapped_column(String(128), index=True)
+    sales_employee: Mapped[str | None] = mapped_column(String(128))
 
 
 class MetricFact(FactMixin, Base):

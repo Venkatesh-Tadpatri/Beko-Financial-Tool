@@ -109,10 +109,11 @@ describe('sign in', () => {
     renderApp();
     await signIn('founder');
     const nav = await screen.findByRole('navigation', { name: 'Main' });
-    for (const item of ['Dashboard', 'Upload data', 'Approvals', 'Master data', 'Users', 'Backups', 'Audit log']) {
+    for (const item of ['Dashboard', 'Upload data', 'Master data', 'Users', 'Backups', 'Audit log']) {
       expect(within(nav).getByRole('link', { name: item })).toBeInTheDocument();
     }
     expect(within(nav).getByText('Super Admin')).toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: 'Approvals' })).not.toBeInTheDocument();
   });
 
   it('hides upload, approval, backup and user management from a Viewer', async () => {
@@ -131,7 +132,7 @@ describe('sign in', () => {
     window.location.hash = '#/users';
     renderApp();
     await signIn('val');
-    expect(await screen.findByText(/Welcome, val/)).toBeInTheDocument();
+    expect(await screen.findByText(/Executive Dashboard/i)).toBeInTheDocument();
     expect(screen.queryByText(/user management phase/)).not.toBeInTheDocument();
   });
 

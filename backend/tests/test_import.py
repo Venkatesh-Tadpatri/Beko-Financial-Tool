@@ -76,12 +76,13 @@ def map_and_stage(client, token, batch_id, sheet="Export", header_row=1, column_
 def full_upload(client, team, tmp_path, rows, name="sales.xlsx"):
     f = make_xlsx(tmp_path / name, SAP_HEADERS, rows)
     b = upload(client, team["editor"], f)["batch"]
+    if b["status"] == "approved":
+        return b["id"]
     summary = map_and_stage(client, team["editor"], b["id"])
     assert summary["can_submit"], summary
     r = client.post(f"/api/import/batches/{b['id']}/submit", headers=auth(team["editor"]))
     assert r.status_code == 200, r.text
-    r = client.post(f"/api/approvals/{b['id']}/approve", headers=auth(team["approver"]), json={"comment": "ok"})
-    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "approved"
     return b["id"]
 
 
@@ -118,6 +119,28 @@ def test_suggested_mapping_recognises_sap_headers():
                  "amount": "Net Value", "quantity": "Billed Quantity"}
 
 
+def test_sales_register_mapping_recognises_quarterly_export_headers():
+    headers = ["Billing Document", "Billing Date", "Payer code", "Consignee code", "Consignee name",
+               "Billing Qty.", "HSN/SAC Code", "Unit", "Region", "Basic Price", "Base amount",
+               "Sales Order", "Sales Order Item", "Sales Order Date", "Payer name", "Description",
+               "Division", "Description (2)", "Sales Employee"]
+    mapping = importer.suggest_mapping(headers, importer.dataset("sales"), None)
+    assert mapping["period_date"] == "Billing Date"
+    assert mapping["customer_code"] == "Payer code"
+    assert mapping["amount"] == "Base amount"
+    assert mapping["quantity"] == "Billing Qty."
+    assert mapping["sales_channel"] == "Description"
+    assert mapping["product_name"] == "Description (2)"
+    assert mapping["division_code"] == "Division"
+    assert mapping["sales_employee"] == "Sales Employee"
+
+
+def test_header_row_is_detected_after_sap_title_rows(tmp_path):
+    file = make_xlsx(tmp_path / "register.xlsx", SAP_HEADERS,
+                     [["15.04.2025", "C100", "M-AC15", 100, 1]], title_rows=2)
+    assert importer.detect_header_row(file, "Export", importer.dataset("sales")) == 3
+
+
 # ------------------------------------------------------------------ happy path
 
 
@@ -129,33 +152,37 @@ def test_upload_archive_review_submit_approve(client, team, tmp_path, settings):
     original = f.read_bytes()
     res = upload(client, team["editor"], f)
     b = res["batch"]
-    assert res["sheets"] == ["Export"] and b["status"] == "draft" and b["period_grain"] == "M"
+    assert res["sheets"] == ["Export"] and b["status"] == "approved" and b["period_grain"] == "M"
 
     # archived unchanged and read-only
     archived = settings.paths.uploads_dir / db_exec(client, "SELECT archived_path FROM upload_batches")[0][0]
     assert archived.read_bytes() == original
     assert not os.access(archived, os.W_OK) or not (archived.stat().st_mode & stat.S_IWRITE)
 
-    summary = map_and_stage(client, team["editor"], b["id"])
+    summary = b["summary"]
     assert summary["ready_rows"] == 3 and summary["can_submit"]
     assert [(p["label"], p["rows"], p["total_paise"]) for p in summary["periods"]] == [
         ("Apr 2025", 2, 12_500_050 + 8_000_000), ("May 2025", 1, 9_999_999)]
 
-    r = client.post(f"/api/import/batches/{b['id']}/submit", headers=auth(team["editor"]))
-    assert r.json()["status"] == "submitted" and r.json()["backup_warning"] is None
-
     pending = client.get("/api/approvals/pending", headers=auth(team["approver"])).json()
-    assert [p["id"] for p in pending] == [b["id"]] and pending[0]["can_act"] is True
-
-    r = client.post(f"/api/approvals/{b['id']}/approve", headers=auth(team["approver"]), json={"comment": "Checked totals"})
-    assert r.json()["status"] == "approved"
+    assert pending == []
     assert sales_total(settings.paths.db_file) == 12_500_050 + 8_000_000 + 9_999_999
     facts = db_exec(client, "SELECT customer_code, oem_id, product_id, division_id, quantity FROM sales_facts ORDER BY id")
     assert facts[0] == ("C100", team["ids"]["o1"], team["ids"]["p1"], team["ids"]["d1"], 3)
 
-    reasons = [b["reason"] for b in client.get("/api/backups", headers=auth(team["admin"])).json()["backups"]]
-    assert "upload" in reasons and "approval" in reasons
-    assert {"upload", "upload_submitted", "approved"} <= set(actions(client))
+    assert {"upload", "upload_published"} <= set(actions(client))
+
+
+def test_live_sales_summary_uses_approved_current_facts(client, team, tmp_path):
+    full_upload(client, team, tmp_path, [["15.04.2025", "C100", "M-AC15", 100_000, 2],
+                                         ["15.05.2025", "C200", "M-FR300", 200_000, 4]])
+    response = client.get("/api/reports/sales-summary", headers=auth(team["viewer"]))
+    assert response.status_code == 200
+    body = response.json()
+    assert body["fy_label"] == "FY2025-26"
+    assert body["total_paise"] == 30_000_000 and body["total_units"] == 6
+    assert [p["label"] for p in body["periods"]] == ["Apr 2025", "May 2025"]
+    assert {p["name"] for p in body["products"]} == {"1.5T Split AC", "300L Fridge"}
 
 
 def test_template_is_saved_and_reused_with_sheet_and_header_row(client, team, tmp_path):

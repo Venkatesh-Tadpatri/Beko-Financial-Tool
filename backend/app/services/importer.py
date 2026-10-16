@@ -171,20 +171,47 @@ def preview(path: Path, sheet: str, header_row: int) -> dict:
     return {"headers": headers, "sample": sample}
 
 
+def detect_header_row(path: Path, sheet: str, ds: DatasetDef, limit: int = 20) -> int:
+    """Choose the most likely header row from the first rows of a SAP export."""
+    wb = load_workbook(path, read_only=True, data_only=True)
+    try:
+        ws = wb[sheet]
+        best_row, best_score = 1, -1
+        for row_no, values in enumerate(ws.iter_rows(min_row=1, max_row=limit, values_only=True), start=1):
+            headers = _headers(values)
+            mapped = suggest_mapping(headers, ds, None)
+            score = len(mapped) + 5 * sum(key in mapped for key in ("period_date", "customer_code", "amount"))
+            if score > best_score:
+                best_row, best_score = row_no, score
+        return best_row
+    finally:
+        wb.close()
+
+
 # ------------------------------------------------------------------ mapping suggestions
 
 _SYNONYMS: dict[str, list[str]] = {
     "period_date": ["billing date", "posting date", "invoice date", "document date", "date", "fkdat", "budat", "period date"],
     "fiscal_year": ["fiscal year", "financial year", "fy", "year", "gjahr"],
     "period_no": ["posting period", "period", "month", "quarter", "monat", "poper"],
-    "customer_code": ["sold to party", "sold-to party", "customer code", "customer", "customer number", "kunnr", "kunag", "payer"],
+    "customer_code": ["payer code", "sold to party", "sold-to party", "customer code", "customer", "customer number", "kunnr", "kunag", "payer"],
     "material_code": ["material", "material code", "material number", "matnr", "item code"],
-    "amount": ["net value", "net amount", "amount", "sales value", "netwr", "value", "outstanding", "balance"],
-    "quantity": ["billed quantity", "quantity", "qty", "fkimg"],
+    "amount": ["base amount", "net value", "net amount", "amount", "sales value", "netwr", "value", "outstanding", "balance"],
+    "quantity": ["billing qty.", "billing qty", "billed quantity", "quantity", "qty", "fkimg"],
     "division_code": ["division", "division code", "spart"],
     "category": ["expense category", "category", "cost element", "gl account name"],
     "ageing_bucket": ["ageing bucket", "aging bucket", "ageing", "aging", "bucket", "days overdue"],
 }
+
+_SYNONYMS.update({
+    "billing_document": ["billing document"], "consignee_code": ["consignee code"],
+    "consignee_name": ["consignee name"], "hsn_sac_code": ["hsn/sac code", "hsn sac code"],
+    "unit": ["unit"], "region": ["region"], "basic_price": ["basic price"],
+    "sales_order": ["sales order"], "sales_order_item": ["sales order item"],
+    "sales_order_date": ["sales order date"], "payer_name": ["payer name"],
+    "sales_channel": ["description"], "product_name": ["description (2)", "product name", "product description"],
+    "sales_employee": ["sales employee"],
+})
 
 
 def _norm(s: str) -> str:
@@ -361,7 +388,7 @@ class Validator:
                 if f.required:
                     issues.append(Issue(f.key, "missing", f"{f.label} is missing."))
                 continue
-            if f.kind == "text":
+            if f.kind in ("text", "date"):
                 dims[f.key] = str(v).strip() if not isinstance(v, float) or not v.is_integer() else str(int(v))
             else:
                 try:
@@ -377,10 +404,11 @@ class Validator:
                 issues.append(Issue(None, "no_values", "The row has no values."))
 
         # Master data lookups
+        direct_product = bool(dims.get("product_name"))
         cust = dims.get("customer_code")
         if cust is not None:
             oem = self.lookups.customers.get(cust.lower())
-            if oem is None:
+            if oem is None and not direct_product:
                 issues.append(Issue("customer_code", "unmapped_customer", f'SAP customer code "{cust}" is not mapped to an OEM.'))
             refs["oem_id"] = oem
         mat = dims.get("material_code")
@@ -393,7 +421,7 @@ class Validator:
         div = dims.get("division_code")
         if div is not None:
             did = self.lookups.divisions.get(div.lower())
-            if did is None:
+            if did is None and not direct_product:
                 issues.append(Issue("division_code", "unknown_division", f'Division "{div}" does not exist in master data.'))
             refs["division_id"] = did
         bucket = dims.get("ageing_bucket")

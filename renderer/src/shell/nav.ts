@@ -15,6 +15,9 @@ export interface NavGroup {
 const I = {
   dashboard: 'M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z',
   reports: 'M5 21V10m7 11V4m7 17v-7',
+  turnover: 'M4 19h16M7 19v-5m5 5V9m5 10v-8M4 12l5-5 4 3 7-7m0 0h-4m4 0v4',
+  revenue: 'M4 20V10m5 10V4m5 16v-7m5 7V7M3 20h18',
+  productMix: 'M12 3a9 9 0 1 0 9 9h-9V3Zm3 0v6h6a9 9 0 0 0-6-6Z',
   upload: 'M12 16V4m0 0-4 4m4-4 4 4M4 20h16',
   approve: 'm5 12 4 4 10-10',
   master: 'M4 6h16M4 12h16M4 18h10',
@@ -28,6 +31,9 @@ export const NAV: NavGroup[] = [
     label: 'Overview',
     items: [
       { to: '/', label: 'Dashboard', permission: 'view_reports', icon: I.dashboard },
+      { to: '/turnover', label: 'Turnover', permission: 'view_reports', icon: I.turnover },
+      { to: '/revenue', label: 'Revenue', permission: 'view_reports', icon: I.revenue },
+      { to: '/product-mix', label: 'Product Mix', permission: 'view_reports', icon: I.productMix },
       { to: '/reports', label: 'Reports', permission: 'view_reports', icon: I.reports, phase: 'charts' },
     ],
   },
@@ -35,7 +41,6 @@ export const NAV: NavGroup[] = [
     label: 'Data',
     items: [
       { to: '/upload', label: 'Upload data', permission: 'upload_data', icon: I.upload },
-      { to: '/approvals', label: 'Approvals', permission: 'approve_data', icon: I.approve },
       { to: '/master-data', label: 'Master data', permission: 'manage_master_data', icon: I.master },
     ],
   },

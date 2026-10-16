@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  approvalsApi,
   formatPaise,
   GRAIN_LABELS,
   importApi,
@@ -11,10 +10,9 @@ import {
   type SheetPreview,
   type StagedRow,
 } from '../api/data';
-import { useAuth, useCan } from '../auth/AuthContext';
+import { useCan } from '../auth/AuthContext';
 import { Badge, Card, Dialog, errorText, formatDateTime, LinkButton, Select, Table, Td, useAsync } from '../components/kit';
 import { Alert, Button, Field } from '../components/ui';
-import { ROLE_LABELS } from '../shell/nav';
 import { STATUS } from './UploadPage';
 
 export function BatchPage() {
@@ -59,11 +57,7 @@ function BatchHeader({ b, ds }: { b: Batch; ds: DatasetInfo }) {
           {b.reimport_of ? ` · re-import of #${b.reimport_of}` : ''}
         </p>
       </div>
-      {b.status === 'submitted' && (
-        <p className="text-sm text-muted">
-          Approval step {b.current_level} of {b.levels.length}: needs {ROLE_LABELS[b.levels[b.current_level - 1]]}
-        </p>
-      )}
+      {b.status === 'submitted' && <p className="text-sm text-muted">Finishing database import…</p>}
     </section>
   );
 }
@@ -193,7 +187,6 @@ const FILTERS = [
 const PAGE = 100;
 
 function ReviewStep({ b, ds, reload, onRemap }: { b: Batch; ds: DatasetInfo; reload: () => Promise<void>; onRemap: () => void }) {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const canUpload = useCan('upload_data');
   const editable = b.status === 'draft' && canUpload;
@@ -203,7 +196,7 @@ function ReviewStep({ b, ds, reload, onRemap }: { b: Batch; ds: DatasetInfo; rel
   const rows = useAsync(() => importApi.rows(b.id, filter, offset, PAGE), [b.id, filter, offset, summary]);
   const [editing, setEditing] = useState<StagedRow | null>(null);
   const [msg, setMsg] = useState<{ kind: 'success' | 'error' | 'warning' | 'info'; text: string } | null>(null);
-  const [decide, setDecide] = useState<'approve' | 'reject' | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => setSummary(b.summary), [b.summary]);
 
@@ -223,6 +216,23 @@ function ReviewStep({ b, ds, reload, onRemap }: { b: Batch; ds: DatasetInfo; rel
       setBusy(false);
     }
   }, [reload]);
+
+  const importAndShow = useCallback(async () => {
+    setBusy(true);
+    setImportError(null);
+    try {
+      const result = await importApi.submit(b.id);
+      if (result.status === 'approved') {
+        navigate('/');
+        return;
+      }
+      setImportError('The file was not imported. Please check the rows and try again.');
+    } catch (e) {
+      setImportError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [b.id, navigate]);
 
   const s = summary;
   return (
@@ -250,7 +260,7 @@ function ReviewStep({ b, ds, reload, onRemap }: { b: Batch; ds: DatasetInfo; rel
           </Table>
           {b.replaces && b.replaces.length > 0 && (
             <p className="mt-3 text-sm text-amber-800">
-              When approved, this replaces data from {b.replaces.map((r) => `upload #${r.batch_id} (${r.original_filename}, ${r.months} month${r.months > 1 ? 's' : ''})`).join(', ')}. The older data stays in the history.
+              Publishing this import replaces data from {b.replaces.map((r) => `upload #${r.batch_id} (${r.original_filename}, ${r.months} month${r.months > 1 ? 's' : ''})`).join(', ')}. The older data stays in the history.
             </p>
           )}
         </Card>
@@ -266,7 +276,7 @@ function ReviewStep({ b, ds, reload, onRemap }: { b: Batch; ds: DatasetInfo; rel
             <>
               <Button variant="ghost" onClick={onRemap}>Change mapping</Button>
               <Button variant="secondary" busy={busy} onClick={() => void act(async () => setSummary((await importApi.validate(b.id)).summary), 'Checked again with the latest master data.')}>Check again</Button>
-              <Button busy={busy} disabled={!s.can_submit} onClick={() => void act(() => importApi.submit(b.id), 'Submitted for approval.')}>Submit for approval</Button>
+              <Button busy={busy} disabled={!s.can_submit} onClick={() => void importAndShow()}>Import and show data</Button>
             </>
           ) : undefined
         }
@@ -317,15 +327,15 @@ function ReviewStep({ b, ds, reload, onRemap }: { b: Batch; ds: DatasetInfo; rel
         <Pager total={rows.data?.total ?? 0} offset={offset} setOffset={setOffset} />
       </Card>
 
-      {b.status === 'submitted' && b.can_act && (
-        <div className="flex justify-end gap-3">
-          <Button variant="danger" onClick={() => setDecide('reject')}>Reject</Button>
-          <Button onClick={() => setDecide('approve')}>{b.current_level < b.levels.length ? `Approve step ${b.current_level}` : 'Approve and publish'}</Button>
+      {b.status === 'submitted' && canUpload && (
+        <div className="space-y-3">
+          {importError && <Alert kind="error">{importError}</Alert>}
+          <div className="flex justify-end">
+            <Button busy={busy} onClick={() => void importAndShow()}>Import and show data</Button>
+          </div>
         </div>
       )}
-      {b.status === 'submitted' && !b.can_act && user?.permissions.includes('approve_data') && b.uploaded_by_id === user.id && (
-        <Alert kind="info">You uploaded this file, so another approver must review it.</Alert>
-      )}
+
       {b.status === 'rejected' && canUpload && (
         <div className="flex justify-end gap-3">
           <Button variant="secondary" onClick={() => void act(() => importApi.discard(b.id).then(() => navigate('/upload')))}>Discard</Button>
@@ -346,9 +356,6 @@ function ReviewStep({ b, ds, reload, onRemap }: { b: Batch; ds: DatasetInfo; rel
 
       {editing && (
         <RowEditDialog b={b} ds={ds} row={editing} onClose={() => setEditing(null)} onSaved={(sum) => { setEditing(null); setSummary(sum); }} />
-      )}
-      {decide && (
-        <DecisionDialog b={b} kind={decide} onClose={() => setDecide(null)} onDone={async (text) => { setDecide(null); setMsg({ kind: 'success', text }); await reload(); }} />
       )}
     </div>
   );
@@ -381,7 +388,7 @@ function Timeline({ b }: { b: Batch }) {
   const items: { when: string | null; text: string; tone: 'gray' | 'green' | 'red' | 'blue' }[] = [
     { when: b.created_at, text: `Uploaded by ${b.uploaded_by}`, tone: 'gray' },
   ];
-  if (b.submitted_at) items.push({ when: b.submitted_at, text: 'Submitted for approval', tone: 'blue' });
+  if (b.submitted_at) items.push({ when: b.submitted_at, text: b.status === 'submitted' ? 'Database import started' : 'Imported into the database', tone: 'blue' });
   for (const d of b.decisions) {
     items.push({ when: d.ts, text: `${d.decision === 'approved' ? 'Approved' : 'Rejected'} (step ${d.level_no}) by ${d.username}${d.comment ? `: “${d.comment}”` : ''}`, tone: d.decision === 'approved' ? 'green' : 'red' });
   }
@@ -432,44 +439,6 @@ function RowEditDialog({ b, ds, row, onClose, onSaved }: { b: Batch; ds: Dataset
         ))}
         <p className="text-xs text-muted md:col-span-2">Corrections apply to this upload only. The original Excel file is not changed.</p>
       </form>
-    </Dialog>
-  );
-}
-
-function DecisionDialog({ b, kind, onClose, onDone }: { b: Batch; kind: 'approve' | 'reject'; onClose: () => void; onDone: (msg: string) => void }) {
-  const [comment, setComment] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const final = b.current_level >= b.levels.length;
-  async function go() {
-    setBusy(true);
-    setError(null);
-    try {
-      const r = kind === 'approve' ? await approvalsApi.approve(b.id, comment) : await approvalsApi.reject(b.id, comment);
-      onDone(
-        kind === 'reject'
-          ? 'Rejected. The uploader can reopen it to correct.'
-          : r.status === 'approved'
-            ? `Approved. The data is now used in reports.${r.backup_warning ? ` ${r.backup_warning}` : ''}`
-            : `Step ${b.current_level} approved. It now waits for ${ROLE_LABELS[r.levels[r.current_level - 1]]}.`,
-      );
-    } catch (e) {
-      setError(errorText(e));
-      setBusy(false);
-    }
-  }
-  return (
-    <Dialog
-      title={kind === 'approve' ? (final ? 'Approve and publish' : `Approve step ${b.current_level}`) : 'Reject upload'}
-      onClose={onClose}
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant={kind === 'reject' ? 'danger' : 'primary'} busy={busy} onClick={() => void go()}>{kind === 'approve' ? 'Approve' : 'Reject'}</Button></>}
-    >
-      {error && <Alert kind="error">{error}</Alert>}
-      {kind === 'approve' && final && <p className="text-sm">The {b.summary.ready_rows} rows become part of the reports{b.replaces?.length ? ', replacing the earlier data for the same periods' : ''}. A backup is taken automatically.</p>}
-      <div className="space-y-1.5">
-        <label htmlFor="decision-comment" className="block text-sm font-medium">{kind === 'reject' ? 'Reason (required)' : 'Comment (optional)'}</label>
-        <textarea id="decision-comment" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} className="w-full rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100" />
-      </div>
     </Dialog>
   );
 }
