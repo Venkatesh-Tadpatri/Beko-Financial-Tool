@@ -9,7 +9,8 @@ import { createServer } from 'vite';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 
-const tsc = spawnSync(path.join(root, 'node_modules', '.bin', 'tsc.cmd'), ['-p', 'desktop/tsconfig.json'], {
+// Quoted because shell: true passes the command line through cmd.exe, which splits on spaces in the path.
+const tsc = spawnSync(`"${path.join(root, 'node_modules', '.bin', 'tsc.cmd')}"`, ['-p', 'desktop/tsconfig.json'], {
   cwd: root,
   stdio: 'inherit',
   shell: true,

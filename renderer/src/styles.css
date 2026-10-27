@@ -53,3 +53,11 @@ h4 {
   outline: 2px solid var(--color-brand-500);
   outline-offset: 2px;
 }
+
+/* Keep table headers consistent across every screen. */
+table thead th {
+  background-color: #123a8c !important;
+  background-image: none !important;
+  color: #fff;
+}
+

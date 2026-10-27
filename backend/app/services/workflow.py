@@ -356,6 +356,44 @@ def _load_facts(db: Session, batch: UploadBatch, ds, parsed: list[tuple[int, Par
         db.execute(insert(model), rows[i:i + CHUNK])
 
 
+# ------------------------------------------------------------------ permanent delete
+
+
+def delete_batch(db: Session, batch: UploadBatch) -> dict:
+    """Remove an upload and everything loaded from it.
+
+    Months this upload currently provides fall back to the newest earlier
+    version of the same month, if there is one, so deleting the latest import
+    behaves like undoing it. Returns what was removed and restored.
+    """
+    current = set(db.execute(select(PeriodVersion.fy, PeriodVersion.fiscal_month).where(
+        PeriodVersion.batch_id == batch.id, PeriodVersion.valid_to.is_(None))).all())
+    db.execute(delete(PeriodVersion).where(PeriodVersion.batch_id == batch.id))
+    db.flush()
+
+    restored: set[int] = set()
+    for fy, m in sorted(current):
+        prev = db.scalar(select(PeriodVersion).where(
+            PeriodVersion.dataset_type == batch.dataset_type, PeriodVersion.fy == fy, PeriodVersion.fiscal_month == m,
+        ).order_by(PeriodVersion.valid_to.desc(), PeriodVersion.id.desc()).limit(1))
+        if prev is not None:
+            prev.valid_to = None
+            restored.add(prev.batch_id)
+    for old_id in restored:
+        db.get(UploadBatch, old_id).status = "approved"
+
+    facts = 0
+    for model in FACT_MODELS.values():
+        facts += db.execute(delete(model).where(model.batch_id == batch.id)).rowcount or 0
+    db.execute(delete(Override).where(Override.batch_id == batch.id))
+    db.execute(delete(StagingRow).where(StagingRow.batch_id == batch.id))
+    db.execute(delete(ApprovalDecision).where(ApprovalDecision.batch_id == batch.id))
+    db.execute(update(UploadBatch).where(UploadBatch.reimport_of == batch.id).values(reimport_of=None))
+    db.delete(batch)
+    db.flush()
+    return {"facts": facts, "months": len(current), "restored_batches": sorted(restored)}
+
+
 # ------------------------------------------------------------------ overrides
 
 FACT_MODELS = {"sales_facts": SalesFact, "metric_facts": MetricFact, "receivable_facts": ReceivableFact}

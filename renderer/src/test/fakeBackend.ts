@@ -68,6 +68,9 @@ export class FakeBackend {
         this.relaunched = true;
         return Promise.resolve();
       },
+      exportPdf: () => Promise.resolve(null),
+      saveFile: () => Promise.resolve(null),
+      showInFolder: () => Promise.resolve(),
     };
   }
 

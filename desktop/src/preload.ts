@@ -8,4 +8,7 @@ contextBridge.exposeInMainWorld('fvt', {
   chooseExcelFile: (): Promise<string | null> => ipcRenderer.invoke('fvt:choose-excel-file'),
   chooseFolder: (title: string): Promise<string | null> => ipcRenderer.invoke('fvt:choose-folder', title),
   relaunch: (): Promise<void> => ipcRenderer.invoke('fvt:relaunch'),
+  exportPdf: (html: string, name: string, header?: string, footer?: string): Promise<string | null> => ipcRenderer.invoke('fvt:export-pdf', html, name, header, footer),
+  saveFile: (name: string, kind: 'png' | 'csv', base64: string): Promise<string | null> => ipcRenderer.invoke('fvt:save-file', name, kind, base64),
+  showInFolder: (file: string): Promise<void> => ipcRenderer.invoke('fvt:show-in-folder', file),
 });

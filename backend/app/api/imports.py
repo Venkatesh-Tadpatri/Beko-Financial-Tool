@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import stat
 from pathlib import Path
 from typing import Literal
 
@@ -85,6 +86,10 @@ class LevelsRequest(BaseModel):
 class GrainRequest(BaseModel):
     dataset_type: str
     period_grain: Literal["M", "Q", "Y"]
+
+
+class DeleteRequest(BaseModel):
+    password: str = Field(default="", max_length=256)
 
 
 class OverrideRequest(BaseModel):
@@ -384,6 +389,37 @@ def discard(batch_id: int, p: Principal = Depends(can_upload), db: Session = Dep
         db.delete(b)
     audit.record(db, "upload_discarded", user=p.user, entity_type="batch", entity_id=batch_id,
                  details={"file": b.original_filename})
+
+
+@router.post("/import/batches/{batch_id}/delete")
+def delete_permanently(batch_id: int, body: DeleteRequest, request: Request, state: AppState = Depends(get_state)) -> dict:
+    """Remove an upload and all data loaded from it. A backup is taken first so it can be undone by a restore."""
+    with short_transaction(request, state, Perm.ADMIN_DATA) as (db, p):
+        _batch(db, batch_id)
+        if not verify_password(p.user.password_hash, body.password):
+            raise _err(400, "wrong_password", "Your password is not correct.")
+    try:
+        backup = BackupService(state.settings.paths).create("pre_delete").filename
+    except Exception as exc:
+        log.exception("backup before delete failed")
+        raise _err(500, "backup_failed", f"The data was not deleted because the safety backup failed: {exc}") from exc
+    with short_transaction(request, state, Perm.ADMIN_DATA) as (db, p):
+        b = _batch(db, batch_id)
+        info = {"file": b.original_filename, "dataset": b.dataset_type, "status": b.status, "rows": b.row_count}
+        archived = b.archived_path
+        result = workflow.delete_batch(db, b)
+        shared = db.scalar(select(UploadBatch.id).where(UploadBatch.archived_path == archived).limit(1))
+        audit.record(db, "upload_deleted", user=p.user, entity_type="batch", entity_id=batch_id,
+                     details={**info, **result, "backup": backup})
+    if shared is None:
+        target = state.settings.paths.uploads_dir / archived
+        try:
+            if target.exists():
+                target.chmod(stat.S_IREAD | stat.S_IWRITE)  # archived originals are read-only
+            target.unlink(missing_ok=True)
+        except OSError:
+            log.warning("could not remove archived upload %s", archived, exc_info=True)
+    return {**result, "backup": backup}
 
 
 @router.post("/import/batches/{batch_id}/reimport", status_code=status.HTTP_201_CREATED)

@@ -34,8 +34,8 @@ from app.services.local_config import LocalConfig, atomic_write_text
 
 log = logging.getLogger(__name__)
 
-REASONS = ("pre_migration", "pre_restore", "upload", "approval", "daily", "manual")
-RETENTION = {"daily": 30, "event": 50, "pre_migration": 10, "pre_restore": 10}
+REASONS = ("pre_migration", "pre_restore", "pre_delete", "upload", "approval", "daily", "manual")
+RETENTION = {"daily": 30, "event": 50, "pre_migration": 10, "pre_restore": 10, "pre_delete": 20}
 _EVENT_REASONS = {"upload", "approval", "manual"}
 MANIFEST = "manifest.json"
 _NAME_RE = re.compile(r"^app-(\d{8}-\d{6}-\d{6})-([a-z_]+)\.db$")

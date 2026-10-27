@@ -34,6 +34,9 @@ export class ApiError extends Error {
 
 type UnauthorizedHandler = (code: string, message: string) => void;
 let onUnauthorized: UnauthorizedHandler | null = null;
+const reportCache = new Map<string, unknown>();
+const reportRequests = new Map<string, Promise<unknown>>();
+let reportCacheVersion = 0;
 
 /** Called when any request (other than login) finds the session gone. */
 export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
@@ -45,7 +48,48 @@ const FALLBACK_MESSAGES: Record<number, string> = {
   503: 'The data service is not available.',
 };
 
+export function peekReportCache<T>(path: string): T | undefined {
+  return reportCache.get(path) as T | undefined;
+}
+
+export function warmReportCache(): void {
+  const routes = [
+    '/api/reports/dashboard', '/api/reports/margins', '/api/reports/balance-sheet',
+    '/api/reports/expenses-summary', '/api/reports/forecast-vs-actual', '/api/reports/history',
+    '/api/reports/region-summary', '/api/reports/sales-summary',
+  ];
+  void Promise.all(routes.map((path) => api<unknown>('GET', path).catch(() => undefined)));
+}
+
 export async function api<T>(method: BridgeRequest['method'], path: string, body?: unknown): Promise<T> {
+  const cacheable = method === 'GET' && path.startsWith('/api/reports/');
+  if (cacheable) {
+    if (reportCache.has(path)) return reportCache.get(path) as T;
+    const existing = reportRequests.get(path);
+    if (existing) return existing as Promise<T>;
+  }
+
+  const cacheVersion = reportCacheVersion;
+  const request = performApi<T>(method, path, body).then((result) => {
+    if (cacheable && cacheVersion === reportCacheVersion) reportCache.set(path, result);
+    else if (method !== 'GET') {
+      reportCache.clear();
+      reportRequests.clear();
+      reportCacheVersion += 1;
+    }
+    return result;
+  });
+  if (!cacheable) return request;
+
+  reportRequests.set(path, request);
+  try {
+    return await request;
+  } finally {
+    if (reportRequests.get(path) === request) reportRequests.delete(path);
+  }
+}
+
+async function performApi<T>(method: BridgeRequest['method'], path: string, body?: unknown): Promise<T> {
   const res = await window.fvt.api({ method, path, body });
   if (res.ok) return res.data as T;
 

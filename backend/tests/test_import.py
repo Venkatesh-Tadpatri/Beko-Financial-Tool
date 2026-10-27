@@ -185,6 +185,17 @@ def test_live_sales_summary_uses_approved_current_facts(client, team, tmp_path):
     assert {p["name"] for p in body["products"]} == {"1.5T Split AC", "300L Fridge"}
 
 
+def test_sales_summary_returns_quarter_totals_per_year(client, team, tmp_path):
+    full_upload(client, team, tmp_path, [["15.04.2024", "C100", "M-AC15", 100, 1],    # FY2024 Q1
+                                         ["15.02.2025", "C100", "M-AC15", 300, 1],    # FY2024 Q4
+                                         ["15.08.2025", "C200", "M-FR300", 500, 1]])  # FY2025 Q2
+    body = client.get("/api/reports/sales-summary", headers=auth(team["viewer"])).json()
+    years = {y["fy"]: y for y in body["years"]}
+    assert years[2024]["quarters"] == [10_000, 0, 0, 30_000]
+    assert years[2025]["quarters"] == [0, 50_000, 0, 0]
+    assert years[2024]["amount_paise"] == 40_000
+
+
 def test_template_is_saved_and_reused_with_sheet_and_header_row(client, team, tmp_path):
     headers = ["Posting Date", "Customer", "Item Code", "Amount INR"]
     f1 = make_xlsx(tmp_path / "a.xlsx", headers, [["2025-06-01", "C100", "M-AC15", 10]], sheet="Data", title_rows=2)
@@ -344,6 +355,34 @@ def test_new_upload_replaces_only_the_periods_it_covers_and_keeps_history(client
     assert db_exec(client, "SELECT COUNT(*) FROM sales_facts WHERE batch_id = :a", a=a)[0][0] == 2
 
 
+def test_delete_upload_removes_everything_and_restores_the_previous_version(client, team, tmp_path, settings):
+    a = full_upload(client, team, tmp_path, [["15.04.2025", "C100", "M-AC15", 100, 1],
+                                             ["15.05.2025", "C100", "M-AC15", 200, 1]], "a.xlsx")
+    b = full_upload(client, team, tmp_path, [["10.05.2025", "C200", "M-FR300", 500, 1]], "b.xlsx")
+    archived = db_exec(client, "SELECT archived_path FROM upload_batches WHERE id = :b", b=b)[0][0]
+    assert (settings.paths.uploads_dir / archived).is_file()
+
+    url = f"/api/import/batches/{b}/delete"
+    assert client.post(url, headers=auth(team["admin2"]), json={"password": GOOD}).status_code == 403
+    assert client.post(url, headers=auth(team["admin"]), json={"password": "wrong"}).status_code == 400
+    r = client.post(url, headers=auth(team["admin"]), json={"password": GOOD})
+    assert r.status_code == 200, r.text
+    assert r.json()["restored_batches"] == [a] and r.json()["facts"] == 1 and r.json()["backup"]
+
+    for table in ("sales_facts", "staging_rows", "period_versions"):
+        assert db_exec(client, f"SELECT COUNT(*) FROM {table} WHERE batch_id = :b", b=b)[0][0] == 0
+    assert db_exec(client, "SELECT COUNT(*) FROM upload_batches WHERE id = :b", b=b)[0][0] == 0
+    assert not (settings.paths.uploads_dir / archived).exists()
+    current = db_exec(client, "SELECT fiscal_month, batch_id FROM period_versions WHERE valid_to IS NULL ORDER BY fiscal_month")
+    assert current == [(1, a), (2, a)]
+    assert sales_total(settings.paths.db_file) == 30_000
+    assert "upload_deleted" in actions(client)
+
+    assert client.post(f"/api/import/batches/{a}/delete", headers=auth(team["admin"]), json={"password": GOOD}).status_code == 200
+    assert db_exec(client, "SELECT COUNT(*) FROM period_versions")[0][0] == 0
+    assert sales_total(settings.paths.db_file) == 0
+
+
 def test_partial_replacement_of_a_quarter_is_refused(client, team, tmp_path):
     assert client.put("/api/settings/datasets", headers=auth(team["admin2"]),
                       json={"dataset_type": "sales", "period_grain": "Q"}).status_code == 200
@@ -465,3 +504,93 @@ def test_archive_file_is_byte_identical(tmp_path):
     assert (tmp_path / "uploads" / rel).read_bytes() == f.read_bytes()
     # uploading the same file again reuses the archived copy
     assert importer.archive_file(f, tmp_path / "uploads") == (rel, digest)
+
+
+def test_region_codes_map_to_states_and_zones():
+    from app.core import regions
+    assert regions.lookup("27") == ("27", "Maharashtra", "West")
+    assert regions.lookup(" 9") == ("09", "Uttar Pradesh", "North")
+    assert regions.lookup("36.0") == ("36", "Telangana", "South")
+    assert regions.lookup("19-West Bengal") == ("19", "West Bengal", "East")
+    assert regions.lookup("88") == ("88", "State code 88", "Unassigned")
+    assert regions.lookup(None) == (None, "Not specified", "Unassigned")
+
+
+def test_region_summary_groups_sales_by_zone_and_quarter(client, team, tmp_path):
+    f = make_xlsx(tmp_path / "regions.xlsx", SAP_HEADERS + ["Region"], [
+        ["15.04.2024", "C100", "M-AC15", 100, 1, "27"],   # FY2024 Q1 West
+        ["15.08.2025", "C100", "M-AC15", 300, 1, "27"],   # FY2025 Q2 West
+        ["15.08.2025", "C200", "M-FR300", 500, 1, "36"],  # FY2025 Q2 South
+        ["15.11.2025", "C200", "M-FR300", 200, 1, None],  # FY2025 Q3 no region
+    ])
+    b = upload(client, team["editor"], f)["batch"]
+    assert b["status"] == "approved", b
+    body = client.get("/api/reports/region-summary", headers=auth(team["viewer"])).json()
+    assert body["fy"] == 2025
+    zones = {z["zone"]: z for z in body["zones"]}
+    assert list(zones) == ["North", "South", "East", "West", "Unassigned"]
+    assert zones["West"]["quarters"] == [0, 30_000, 0, 0]
+    assert zones["South"]["total_paise"] == 50_000
+    assert zones["Unassigned"]["quarters"] == [0, 0, 20_000, 0]
+    assert {z["zone"]: z["total_paise"] for z in body["previous"]}["West"] == 10_000
+    assert body["states"][0] == {"code": "36", "state": "Telangana", "zone": "South", "amount_paise": 50_000, "prev_amount_paise": 0}
+
+
+def test_dashboard_reports_sales_and_leaves_missing_finance_figures_empty(client, team, tmp_path):
+    full_upload(client, team, tmp_path, [["15.04.2024", "C100", "M-AC15", 100, 1],
+                                         ["15.04.2025", "C100", "M-AC15", 300, 1],
+                                         ["15.05.2025", "C200", "M-FR300", 500, 1]])
+    body = client.get("/api/reports/dashboard", headers=auth(team["viewer"])).json()
+    assert body["fy"] == 2025
+    years = {y["fy"]: y for y in body["years"]}
+    assert years[2025]["sales_paise"] == 80_000 and years[2024]["sales_paise"] == 10_000
+    assert years[2025]["free_cash_flow_paise"] is None and years[2025]["roe_pct"] is None
+    assert years[2025]["dso_days"] is None and years[2025]["operating_profit_paise"] is None
+    assert body["months"]["current"][:2] == [30_000, 50_000]
+    assert body["months"]["previous"][0] == 10_000 and body["months"]["forecast"] is None
+    assert body["products"]["current"] == {"1.5T Split AC": 30_000, "300L Fridge": 50_000}
+    # FY2025 has Apr-May only, so last year is compared over Apr-May too
+    assert body["products"]["previous_same_months"] == {"1.5T Split AC": 10_000}
+
+
+def test_history_returns_monthly_measures_per_year(client, team, tmp_path):
+    full_upload(client, team, tmp_path, [["15.04.2024", "C100", "M-AC15", 100, 2],
+                                         ["20.04.2024", "C200", "M-FR300", 50, 1],
+                                         ["15.01.2025", "C100", "M-AC15", 300, 4]])
+    body = client.get("/api/reports/history", headers=auth(team["viewer"])).json()
+    (y,) = body["years"]
+    assert y["fy"] == 2024
+    assert y["revenue"][0] == 15_000 and y["revenue"][9] == 30_000 and sum(y["revenue"]) == 45_000
+    assert y["units"][0] == 3 and y["units"][9] == 4
+    assert y["products"] == {"1.5T Split AC": 40_000, "300L Fridge": 5_000}
+
+
+def test_forecast_vs_actual_spreads_quarterly_forecast_and_pairs_with_sales(client, team, tmp_path):
+    full_upload(client, team, tmp_path, [["15.04.2025", "C100", "M-AC15", 100, 1]])
+    body = client.get("/api/reports/forecast-vs-actual", headers=auth(team["viewer"])).json()
+    assert body["has_forecast"] is False and body["years"][0]["actual"][0] == 10_000
+    assert client.put("/api/settings/datasets", headers=auth(team["admin2"]),
+                      json={"dataset_type": "forecast", "period_grain": "Q"}).status_code == 200
+    f = make_xlsx(tmp_path / "fc.xlsx", ["Financial year", "Period", "Revenue forecast"], [[2025, 1, 300]])
+    b = upload(client, team["editor"], f, dataset="forecast", source="Plan")["batch"]
+    assert b["status"] == "approved", b
+    body = client.get("/api/reports/forecast-vs-actual", headers=auth(team["viewer"])).json()
+    (y,) = body["years"]
+    assert body["has_forecast"] and y["forecast"][:4] == [10_000, 10_000, 10_000, 0]
+
+
+def test_expenses_summary_returns_monthly_expenses_by_year(client, team, tmp_path):
+    assert client.get("/api/reports/expenses-summary", headers=auth(team["viewer"])).json() == {"years": []}
+    f = make_xlsx(tmp_path / "exp.xlsx", ["Financial year", "Period", "Expense category", "Expense amount"],
+                  [[2024, 1, "Rent", 100], [2024, 1, "Salaries", 300], [2025, 4, "Rent", 50]])
+    b = upload(client, team["editor"], f, dataset="expenses", source="Finance")["batch"]
+    assert b["status"] == "approved", b
+    years = {y["fy"]: y for y in client.get("/api/reports/expenses-summary", headers=auth(team["viewer"])).json()["years"]}
+    assert years[2024]["months"][0] == 40_000 and years[2025]["months"][3] == 5_000
+    assert years[2024]["categories"] == {"Rent": 10_000, "Salaries": 30_000}
+
+
+def test_margins_returns_sales_revenue_and_empty_pnl_until_uploaded(client, team, tmp_path):
+    full_upload(client, team, tmp_path, [["15.04.2024", "C100", "M-AC15", 100, 1]])
+    (y,) = client.get("/api/reports/margins", headers=auth(team["viewer"])).json()["years"]
+    assert y == {"fy": 2024, "sales_paise": 10_000, "sales_months": 1, "pnl": None}

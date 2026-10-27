@@ -10,6 +10,7 @@ export const REASON_LABELS: Record<BackupRow['reason'], string> = {
   manual: 'Manual',
   pre_migration: 'Before update',
   pre_restore: 'Before restore',
+  pre_delete: 'Before deleting an upload',
 };
 
 type RestoreTarget = { kind: 'backup'; backup: BackupRow } | { kind: 'file'; path: string };

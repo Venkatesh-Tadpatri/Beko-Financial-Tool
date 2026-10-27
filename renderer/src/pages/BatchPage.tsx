@@ -13,7 +13,7 @@ import {
 import { useCan } from '../auth/AuthContext';
 import { Badge, Card, Dialog, errorText, formatDateTime, LinkButton, Select, Table, Td, useAsync } from '../components/kit';
 import { Alert, Button, Field } from '../components/ui';
-import { STATUS } from './UploadPage';
+import { periodRange, STATUS } from './UploadPage';
 
 export function BatchPage() {
   const { id } = useParams();
@@ -26,7 +26,7 @@ export function BatchPage() {
   const ds = datasets.data?.find((d) => d.key === b?.dataset_type);
 
   if (batch.error) return <Alert kind="error">{batch.error}</Alert>;
-  if (!b || !ds) return <p className="text-sm text-muted">Loading…</p>;
+  if (!b || !ds) return null;
 
   const needsMapping = b.status === 'draft' && (remap || Object.keys(b.column_map).length === 0);
   return (
@@ -190,6 +190,8 @@ function ReviewStep({ b, ds, reload, onRemap }: { b: Batch; ds: DatasetInfo; rel
   const navigate = useNavigate();
   const canUpload = useCan('upload_data');
   const editable = b.status === 'draft' && canUpload;
+  const canDelete = useCan('admin_data');
+  const [deleting, setDeleting] = useState(false);
   const [filter, setFilter] = useState(b.summary.error_rows ? 'errors' : 'all');
   const [offset, setOffset] = useState(0);
   const [summary, setSummary] = useState<Partial<BatchSummary>>(b.summary);
@@ -353,7 +355,13 @@ function ReviewStep({ b, ds, reload, onRemap }: { b: Batch; ds: DatasetInfo; rel
           <Button variant="secondary" onClick={() => void act(async () => navigate(`/upload/${(await importApi.reimport(b.id)).batch.id}`))}>Re-import this file</Button>
         </div>
       )}
+      {canDelete && (
+        <div className="flex justify-end">
+          <Button variant="danger" onClick={() => setDeleting(true)}>Delete upload permanently</Button>
+        </div>
+      )}
 
+      {deleting && <DeleteDialog b={b} onClose={() => setDeleting(false)} onDone={() => navigate('/upload')} />}
       {editing && (
         <RowEditDialog b={b} ds={ds} row={editing} onClose={() => setEditing(null)} onSaved={(sum) => { setEditing(null); setSummary(sum); }} />
       )}
@@ -438,6 +446,39 @@ function RowEditDialog({ b, ds, row, onClose, onSaved }: { b: Batch; ds: Dataset
             error={row.issues.find((i) => i.field === f.key)?.message} />
         ))}
         <p className="text-xs text-muted md:col-span-2">Corrections apply to this upload only. The original Excel file is not changed.</p>
+      </form>
+    </Dialog>
+  );
+}
+
+function DeleteDialog({ b, onClose, onDone }: { b: Batch; onClose: () => void; onDone: () => void }) {
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function remove(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await importApi.remove(b.id, password);
+      onDone();
+    } catch (err) {
+      setError(errorText(err));
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog title="Delete upload permanently" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="delete-form" variant="danger" busy={busy} disabled={!password}>Delete permanently</Button></>}>
+      <form id="delete-form" onSubmit={remove} className="space-y-4">
+        {error && <Alert kind="error">{error}</Alert>}
+        <p className="text-sm">
+          This removes <strong>{b.original_filename}</strong> (upload #{b.id}) and all data loaded from it from the database: rows, values, overrides and history. The archived Excel file is deleted too.
+        </p>
+        {b.status === 'approved' && (
+          <Alert kind="warning">Reports for {periodRange(b)} will change. Where an earlier upload covered the same months, that earlier data becomes active again; otherwise those months will have no data.</Alert>
+        )}
+        <p className="text-xs text-muted">A backup is taken first, so this can be undone from Backups if needed.</p>
+        <Field label="Your password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </form>
     </Dialog>
   );

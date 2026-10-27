@@ -56,7 +56,7 @@ export const auditApi = {
 
 export interface BackupRow {
   filename: string;
-  reason: 'pre_migration' | 'pre_restore' | 'upload' | 'approval' | 'daily' | 'manual';
+  reason: 'pre_migration' | 'pre_restore' | 'pre_delete' | 'upload' | 'approval' | 'daily' | 'manual';
   created_at: string;
   size_bytes: number;
   schema_version: string | null;

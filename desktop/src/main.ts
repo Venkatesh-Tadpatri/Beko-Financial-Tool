@@ -133,6 +133,63 @@ function registerShellHandlers(): void {
     });
     return r.canceled ? null : r.filePaths[0];
   });
+  // Report exports. The page builds the content; the user picks where it is saved.
+  const safeName = (name: unknown, ext: string) =>
+    `${(typeof name === 'string' ? name : 'report').replace(/[^\w .()-]+/g, '_').slice(0, 120) || 'report'}.${ext}`;
+  ipcMain.handle('fvt:export-pdf', async (e, html: unknown, name: unknown, header: unknown, footer: unknown) => {
+    guard(e);
+    if (typeof html !== 'string' || html.length > 25_000_000) throw new Error('invalid report');
+    const tpl = (t: unknown) => (typeof t === 'string' && t.length < 2_000_000 ? t : '');
+    const headerTemplate = tpl(header);
+    const footerTemplate = tpl(footer);
+    const r = await dialog.showSaveDialog(mainWindow!, {
+      title: 'Save report as PDF',
+      defaultPath: path.join(app.getPath('documents'), safeName(name, 'pdf')),
+      filters: [{ name: 'PDF document', extensions: ['pdf'] }],
+    });
+    if (r.canceled || !r.filePath) return null;
+    const { writeFile, unlink } = await import('node:fs/promises');
+    const tmp = path.join(app.getPath('temp'), `fvt-report-${process.pid}-${Date.now()}.html`);
+    await writeFile(tmp, html, 'utf8');
+    // A hidden, script-free window renders the report HTML into a PDF.
+    const win = new BrowserWindow({ show: false, width: 1400, height: 1000, webPreferences: { sandbox: true, javascript: false, contextIsolation: true, nodeIntegration: false } });
+    win.webContents.on('will-navigate', (ev) => ev.preventDefault());
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    try {
+      await win.loadFile(tmp);
+      // Letterhead (logo, company, report name, date) and footer (page numbers) repeat on every page.
+      const pdf = await win.webContents.printToPDF({
+        landscape: true, printBackground: true, pageSize: 'A4', preferCSSPageSize: true,
+        displayHeaderFooter: !!(headerTemplate || footerTemplate),
+        headerTemplate: headerTemplate || '<span></span>', footerTemplate: footerTemplate || '<span></span>',
+        margins: { top: 0.95, bottom: 0.6, left: 0.35, right: 0.35 },
+      });
+      await writeFile(r.filePath, pdf);
+    } finally {
+      win.destroy();
+      await unlink(tmp).catch(() => undefined);
+    }
+    return r.filePath;
+  });
+  ipcMain.handle('fvt:save-file', async (e, name: unknown, kind: unknown, base64: unknown) => {
+    guard(e);
+    const types: Record<string, { label: string; ext: string }> = { png: { label: 'PNG image', ext: 'png' }, csv: { label: 'CSV (opens in Excel)', ext: 'csv' } };
+    const t = typeof kind === 'string' ? types[kind] : undefined;
+    if (!t || typeof base64 !== 'string' || base64.length > 40_000_000) throw new Error('invalid file');
+    const r = await dialog.showSaveDialog(mainWindow!, {
+      title: `Save report as ${t.label}`,
+      defaultPath: path.join(app.getPath('documents'), safeName(name, t.ext)),
+      filters: [{ name: t.label, extensions: [t.ext] }],
+    });
+    if (r.canceled || !r.filePath) return null;
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(r.filePath, Buffer.from(base64, 'base64'));
+    return r.filePath;
+  });
+  ipcMain.handle('fvt:show-in-folder', (e, file: unknown) => {
+    guard(e);
+    if (typeof file === 'string') shell.showItemInFolder(file);
+  });
   ipcMain.handle('fvt:relaunch', (e) => {
     guard(e);
     app.relaunch();

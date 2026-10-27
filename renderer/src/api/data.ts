@@ -112,6 +112,8 @@ export const importApi = {
   submit: (id: number) => api<Batch>('POST', `/api/import/batches/${id}/submit`),
   reopen: (id: number) => api<Batch>('POST', `/api/import/batches/${id}/reopen`),
   discard: (id: number) => api<null>('POST', `/api/import/batches/${id}/discard`),
+  remove: (id: number, password: string) =>
+    api<{ facts: number; months: number; restored_batches: number[]; backup: string }>('POST', `/api/import/batches/${id}/delete`, { password }),
   reimport: (id: number) => api<{ batch: Batch }>('POST', `/api/import/batches/${id}/reimport`),
   facts: (id: number, offset: number) =>
     api<{ fact_table: string; items: Record<string, unknown>[]; total: number }>('GET', `/api/import/batches/${id}/facts?offset=${offset}&limit=100`),
@@ -141,6 +143,7 @@ export interface SalesSummary {
   fy: number | null;
   fy_label: string;
   available_fys: number[];
+  years: { fy: number; label: string; amount_paise: number; quarters: number[] }[];
   total_paise: number;
   total_units: number;
   row_count: number;
@@ -152,7 +155,56 @@ export interface SalesSummary {
   customers: SalesReportItem[];
 }
 
+export interface ZoneSales { zone: string; quarters: number[]; total_paise: number }
+export interface RegionSummary {
+  fy: number | null;
+  available_fys: number[];
+  zones: ZoneSales[];
+  previous: ZoneSales[] | null;
+  states: { code: string | null; state: string; zone: string; amount_paise: number; prev_amount_paise: number }[];
+}
+
+export interface DashboardYear {
+  fy: number;
+  sales_paise: number;
+  operating_profit_paise: number | null;
+  free_cash_flow_paise: number | null;
+  roe_pct: number | null;
+  dso_days: number | null;
+}
+export interface DashboardData {
+  fy: number | null;
+  available_fys: number[];
+  years: DashboardYear[];
+  months: { current: number[]; previous: number[] | null; forecast: number[] | null }; // 12 fiscal months, Apr first
+  products: { current: Record<string, number>; previous: Record<string, number>; previous_same_months?: Record<string, number> };
+}
+
+export interface HistoryYear {
+  fy: number;
+  label: string;
+  revenue: number[]; // paise by fiscal month, Apr first
+  units: number[];
+  invoices: number[];
+  products: Record<string, number>; // paise, largest first
+  zones: Record<string, number>;
+}
+
+export interface ForecastYear { fy: number; actual: number[]; forecast: number[] | null } // paise by fiscal month, Apr first
+
+export interface ExpenseYear { fy: number; months: number[]; categories: Record<string, number> } // paise, fiscal months Apr first
+
+export interface MarginYear { fy: number; sales_paise: number; sales_months: number; pnl: Record<string, number> | null }
+export interface BalanceSheetYear { fy: number; values: Record<string, number> }
+
 export const reportApi = {
+  margins: () => api<{ years: MarginYear[] }>('GET', '/api/reports/margins'),
+  balanceSheet: () => api<{ years: BalanceSheetYear[] }>('GET', '/api/reports/balance-sheet'),
+  expensesSummary: () => api<{ years: ExpenseYear[] }>('GET', '/api/reports/expenses-summary'),
+  forecastVsActual: () => api<{ has_forecast: boolean; years: ForecastYear[] }>('GET', '/api/reports/forecast-vs-actual'),
+  history: () => api<{ years: HistoryYear[] }>('GET', '/api/reports/history'),
+  dashboard: (fy?: number) => api<DashboardData>('GET', `/api/reports/dashboard${fy === undefined ? '' : `?fy=${fy}`}`),
+  regionSummary: (fy?: number) => api<RegionSummary>('GET', `/api/reports/region-summary${fy === undefined ? '' : `?fy=${fy}`}`),
   salesSummary: (fy?: number) => api<SalesSummary>('GET', `/api/reports/sales-summary${fy === undefined ? '' : `?fy=${fy}`}`),
 };
 

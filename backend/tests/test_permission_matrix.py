@@ -30,6 +30,7 @@ SELF_GUARDED = {
     ("POST", "/api/backups/{filename}/restore"): Perm.MANAGE_BACKUPS,
     ("POST", "/api/backups/restore-file"): Perm.MANAGE_BACKUPS,
     ("POST", "/api/import/batches/{batch_id}/submit"): Perm.UPLOAD_DATA,
+    ("POST", "/api/import/batches/{batch_id}/delete"): Perm.ADMIN_DATA,
     ("POST", "/api/approvals/{batch_id}/approve"): Perm.APPROVE_DATA,
     ("POST", "/api/overrides"): Perm.OVERRIDE_DATA,
 }
